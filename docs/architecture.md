@@ -96,3 +96,7 @@ Update metadata and artifacts are produced by the native release workflow. macOS
 ## Desktop customization boundary
 
 Most of the product UI remains upstream Harness. DSH Desktop adds native host surfaces through Electron Main and preload code, uses Harness extension slots where available, and tracks unavoidable upstream package changes as reproducible `patch-package` files. This keeps the desktop layer reviewable while making upstream upgrades an explicit compatibility exercise.
+
+## Remote server client
+
+The optional remote build uses `src/main/remote-entry.ts` and a separate application identity. It loads the existing server Web UI in a sandboxed WebContentsView without a preload and hosts native directory management in a local page. The server continues to own authentication, account permissions and sessions. Local folder grants are encrypted, scoped by server origin and account ID, and disconnected on logout. The remote entry never starts the local Harness, mobile bridge or upstream updater. See [the remote client guide](remote-client.md).

@@ -40,7 +40,12 @@
     "package:mac:arm64": "node scripts/verify-target.mjs darwin arm64 && npm run build && electron-builder --mac --arm64 --publish never",
     "package:mac:x64": "node scripts/verify-target.mjs darwin x64 && npm run build && electron-builder --mac --x64 --publish never",
     "package:win": "node scripts/verify-target.mjs win32 x64 && npm run build && electron-builder --win --x64 --publish never",
-    "ppt:build": "node scripts/generate-zara-ppt-templates.mjs && node scripts/localize-ppt-templates.mjs && node scripts/enrich-ppt-templates.mjs && node scripts/build-ppt-runtime.mjs"
+    "ppt:build": "node scripts/generate-zara-ppt-templates.mjs && node scripts/localize-ppt-templates.mjs && node scripts/enrich-ppt-templates.mjs && node scripts/build-ppt-runtime.mjs",
+    "dev:remote": "npm run build:remote && electron .",
+    "build:remote": "electron-vite build --mode remote",
+    "package:remote:dir": "npm run build:remote && node scripts/prepare-remote-package.mjs && electron-builder --dir --config electron-builder.remote.cjs",
+    "package:remote:mac:arm64": "node scripts/verify-target.mjs darwin arm64 && npm run build:remote && node scripts/prepare-remote-package.mjs && electron-builder --mac --arm64 --publish never --config electron-builder.remote.cjs",
+    "package:remote:win": "node scripts/verify-target.mjs win32 x64 && npm run build:remote && node scripts/prepare-remote-package.mjs && electron-builder --win --x64 --publish never --config electron-builder.remote.cjs"
   },
   "dependencies": {
     "@deepseek-ai/cordis": "file:packages/harness-0.1.2-rc.1/npm-vendor/deepseek-ai-cordis-4.0.2.tgz",

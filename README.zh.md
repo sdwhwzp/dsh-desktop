@@ -1,3 +1,5 @@
+> 此 fork 的 `dev` 分支新增连接 30 的桌面客户端，支持原有账号登录和按账号隔离的本机目录。网页端所有现有功能保留。远程包使用独立应用标识，不使用下文原作者的更新源或签名声明。参见 [30 桌面客户端说明](docs/remote-client.md)。
+
 <h1 align="center">
   <img src="docs/images/readme-logo-black-v020.png" width="64" alt="DSH Desktop Logo" valign="middle" />
   DSH Desktop

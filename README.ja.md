@@ -1,3 +1,5 @@
+> この fork の `dev` は、30 サーバーへの接続、既存アカウントでのログイン、アカウント別のローカルフォルダー接続を追加します。既存の Web 機能は引き続き単独で利用できます。リモート版は別のアプリ識別子を使い、以下の上流版の更新・署名の説明は適用されません。[利用ガイド](docs/remote-client.md)。
+
 <h1 align="center">
   <img src="docs/images/readme-logo-black-v020.png" width="64" alt="DSH Desktop ロゴ" valign="middle" />
   DSH Desktop

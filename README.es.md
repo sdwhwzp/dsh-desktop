@@ -1,3 +1,5 @@
+> Este fork añade en `dev` un cliente para el servidor 30, con las cuentas existentes y carpetas locales separadas por cuenta. Todas las funciones web siguen disponibles de forma independiente. El paquete remoto tiene otra identidad y no utiliza las actualizaciones ni las firmas del proyecto original descritas abajo. [Guía](docs/remote-client.md).
+
 <h1 align="center">
   <img src="docs/images/readme-logo-black-v020.png" width="64" alt="Logotipo de DSH Desktop" valign="middle" />
   DSH Desktop

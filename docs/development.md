@@ -103,3 +103,7 @@ Formal release artifacts are built, signed, and published by the tag workflow. A
 - Preserve unrelated worktree changes.
 - Keep temporary research, local reports, and internal working documents under the ignored `doc/` directory.
 - Update all localized README files when changing user-visible facts.
+
+## Remote server build
+
+Use `npm run dev:remote` to build and start the server client. `npm run build:remote` and `npm run package:remote:dir` build its independent entry and package. Existing local-runtime commands keep their original behavior. See [the remote client guide](remote-client.md) for account and directory validation.

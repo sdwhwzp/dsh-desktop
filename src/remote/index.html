@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self'; script-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>山东梯智物联 AI · 桌面端</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <header>
+    <div class="brand"><span class="logo">梯</span><strong>山东梯智物联 AI</strong><span id="connection">正在连接</span></div>
+    <nav aria-label="桌面导航"><button id="home">返回会话</button><button id="folders-page">本机目录</button><button id="reload">刷新</button></nav>
+  </header>
+  <main><div class="content">
+    <div class="heading"><div><p class="eyebrow">桌面连接</p><h1>本机目录</h1></div><button class="primary" id="add" disabled>＋ 选择本机目录</button></div>
+    <p class="description">只接入你选择的目录。当前账号的 Agent 可以读取和修改其中的文件；本机终端未授权。</p>
+    <section class="server-card" aria-label="服务器与账号">
+      <form id="server-form"><label for="server">服务器地址</label><div class="input-row"><input id="server" type="url" required value="http://wh.gr-iot.cn:3081" spellcheck="false" /><button type="submit">连接服务器</button></div><label for="companion" class="companion-label">目录连接地址（留空使用服务器配置）</label><div class="input-row"><input id="companion" type="url" placeholder="ws://wh.gr-iot.cn:3082" spellcheck="false" /></div></form>
+      <div class="account-row"><span id="account">未登录</span><button id="logout" disabled>退出账号</button></div>
+    </section>
+    <p id="notice" role="status" aria-live="polite">正在连接服务器…</p>
+    <section id="folders" aria-label="已授权目录列表"></section>
+    <p class="footnote">断开或移除接入不会删除本机文件。退出账号、关闭桌面端会停止本机目录连接，服务器上的运行服务继续保留。网页端仍可独立使用。</p>
+  </div></main>
+</body>
+</html>

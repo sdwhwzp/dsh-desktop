@@ -1,3 +1,5 @@
+> This fork adds a remote client on `dev` for server 30, existing account login, and account-owned local folders. All existing Web features remain available independently. Remote packages have a separate application identity; upstream update and signing claims below do not apply to them. See the [remote client guide](docs/remote-client.md).
+
 <h1 align="center">
   <img src="docs/images/readme-logo-black-v020.png" width="64" alt="DSH Desktop logo" valign="middle" />
   DSH Desktop
