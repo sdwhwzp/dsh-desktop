@@ -1097,6 +1097,7 @@ async function runOfficePowerShell(
 }
 
 async function spawnCommand(command: string, cwd: string, timeoutMs: number, signal: AbortSignal): Promise<unknown> {
+  throwIfAborted(signal);
   const windows = process.platform === 'win32';
   const executable = windows ? 'powershell.exe' : '/bin/bash';
   const argv = windows
@@ -1148,8 +1149,9 @@ async function spawnCommand(command: string, cwd: string, timeoutMs: number, sig
 }
 
 async function terminateProcessTree(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null || child.pid === undefined) return;
+  if (child.pid === undefined) return;
   if (process.platform === 'win32') {
+    if (child.exitCode !== null || child.signalCode !== null) return;
     await new Promise<void>((resolve) => {
       const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
       killer.once('close', () => resolve());
@@ -1163,8 +1165,8 @@ async function terminateProcessTree(child: ChildProcess): Promise<void> {
   } catch (error) {
     if (!isMissingProcess(error)) throw error;
   }
-  const exited = await Promise.race([waitForExit(child).then(() => true), sleep(1_000).then(() => false)]);
-  if (exited) return;
+  // Descendants can ignore SIGTERM after the shell leader exits.
+  await sleep(1_000);
   try {
     process.kill(-child.pid, 'SIGKILL');
   } catch (error) {

@@ -3,9 +3,9 @@ import WebSocket from 'ws'
 import type { FolderGrant } from './folder-store'
 import { record } from './gateway'
 
-export type FileOperation = 'read' | 'write' | 'edit' | 'glob' | 'grep'
+export type FileOperation = 'read' | 'write' | 'edit' | 'glob' | 'grep' | 'bash'
 export type ExecuteFile = (root: string, operation: FileOperation, args: Record<string, unknown>, signal: AbortSignal) => Promise<unknown>
-const fileOperations = new Set(['read', 'write', 'edit', 'glob', 'grep'])
+const fileOperations = new Set(['read', 'write', 'edit', 'glob', 'grep', 'bash'])
 const MAX_FRAME = 3 * 1024 * 1024
 
 /** One outbound, account-bound connection. Stop aborts operations and disables all reconnects. */
@@ -52,7 +52,7 @@ export class FolderConnection {
           type: code ? 'pair' : 'resume', ...(code ? { code } : { token: this.grant.token }),
           protocol: 2, workspaceId: this.grant.id, root: this.grant.root,
           workspaceName: this.grant.name, deviceName: os.hostname().slice(0, 80), platform: process.platform,
-          shellEnabled: false
+          shellEnabled: true
         }))
       })
       socket.on('message', raw => {
@@ -91,7 +91,7 @@ export class FolderConnection {
           if (this.running.size >= 8) throw new Error('并发目录请求过多')
           this.running.set(id, controller)
           try {
-            if (!fileOperations.has(String(message.operation))) throw new Error('此目录接入仅允许文件操作，未授权本机终端或 Office 自动化')
+            if (!fileOperations.has(String(message.operation))) throw new Error('此接入仅支持文件与终端操作')
             const args = record(message.args)
             await this.authorize()
             if (!alive() || controller.signal.aborted) return

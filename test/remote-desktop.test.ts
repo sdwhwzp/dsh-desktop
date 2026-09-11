@@ -27,7 +27,7 @@ const secrets = {
 function grant(folder = root()): FolderGrant {
   return { id: 'workspace-fixture', server: TEST_SERVER, accountId: 2, root: folder, name: 'Fixture', enabled: true, endpoint: 'ws://127.0.0.1:1', token: 't'.repeat(43) }
 }
-function config(folder: string) { return { root: folder, server: '', deviceName: '', workspaceId: '', workspaceName: '', shellEnabled: false } }
+function config(folder: string) { return { root: folder, server: '', deviceName: '', workspaceId: '', workspaceName: '', shellEnabled: true } }
 async function wsFixture() {
   const server = new WebSocketServer({ host: '127.0.0.1', port: 0 })
   disposers.push(async () => { for (const client of server.clients) client.terminate(); await new Promise<void>(resolve => server.close(() => resolve())) })
@@ -72,7 +72,7 @@ describe('saved local folder grants', () => {
 })
 
 describe('companion connection', () => {
-  it('pairs, reads only after account validation, rejects shell and cancels work on disconnect', async () => {
+  it('pairs with shell enabled, authorizes each operation and cancels work on disconnect', async () => {
     const { server, endpoint } = await wsFixture()
     const row = { ...grant(), endpoint, token: '' }
     let socket!: WebSocket
@@ -86,7 +86,7 @@ describe('companion connection', () => {
       socket = peer
       peer.once('message', raw => {
         const hello = JSON.parse(raw.toString())
-        expect(hello).toMatchObject({ type: 'pair', code: 'c'.repeat(43), shellEnabled: false, root: row.root })
+        expect(hello).toMatchObject({ type: 'pair', code: 'c'.repeat(43), shellEnabled: true, root: row.root })
         peer.send(JSON.stringify({ type: 'ready', workspaceId: row.id, workspacePath: '/virtual/root', token: 't'.repeat(43) }))
       })
     })
@@ -99,27 +99,34 @@ describe('companion connection', () => {
     socket.send(JSON.stringify({ type: 'request', id: 'read', operation: 'read', args: { path: 'fixture.txt' } }))
     expect(JSON.parse((await response)[0].toString())).toMatchObject({ ok: true, value: { lines: ['fixture'] } })
     expect(authorize).toHaveBeenCalledTimes(3)
+    const shell = once(socket, 'message')
+    socket.send(JSON.stringify({ type: 'request', id: 'shell', operation: 'bash', args: { command: 'git status' } }))
+    expect(JSON.parse((await shell)[0].toString()).ok).toBe(true)
+    expect(authorize).toHaveBeenCalledTimes(4)
     const blocked = once(socket, 'message')
-    socket.send(JSON.stringify({ type: 'request', id: 'shell', operation: 'bash', args: { command: 'echo secret' } }))
+    socket.send(JSON.stringify({ type: 'request', id: 'unsupported', operation: 'office', args: {} }))
     expect(JSON.parse((await blocked)[0].toString()).ok).toBe(false)
-    expect(execute).toHaveBeenCalledTimes(1)
+    expect(execute).toHaveBeenCalledTimes(2)
     execute.mockImplementationOnce(async (_root, _op, _args, signal) => {
       pendingSignal = signal
       await new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true }))
       return { lines: [] }
     })
     socket.send(JSON.stringify({ type: 'request', id: 'pending', operation: 'read', args: { path: 'fixture.txt' } }))
-    await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(3))
     const closed = once(socket, 'close')
     client.stop()
     expect(pendingSignal?.aborted).toBe(true)
     await closed
   })
-  it('refuses work if authentication changes before a file request', async () => {
+  it.each(['read', 'bash'])('refuses %s if authentication changes before a request', async operation => {
     const { server, endpoint } = await wsFixture()
     const row = { ...grant(), endpoint }
     let socket!: WebSocket
-    server.on('connection', peer => { socket = peer; peer.once('message', () => peer.send(JSON.stringify({ type: 'ready', workspaceId: row.id }))) })
+    server.on('connection', peer => { socket = peer; peer.once('message', raw => {
+      expect(JSON.parse(raw.toString())).toMatchObject({ type: 'resume', shellEnabled: true })
+      peer.send(JSON.stringify({ type: 'ready', workspaceId: row.id }))
+    }) })
     let allowed = true
     const execute = vi.fn()
     const client = new FolderConnection(row, async () => { if (!allowed) throw new Error('账号已退出') }, execute, () => {}, () => {})
@@ -127,7 +134,7 @@ describe('companion connection', () => {
     await client.connect()
     allowed = false
     const response = once(socket, 'message')
-    socket.send(JSON.stringify({ type: 'request', id: 'private', operation: 'read', args: { path: 'secret' } }))
+    socket.send(JSON.stringify({ type: 'request', id: 'private', operation, args: { path: 'secret', command: 'git status' } }))
     expect(JSON.parse((await response)[0].toString()).ok).toBe(false)
     expect(execute).not.toHaveBeenCalled()
   })
@@ -168,5 +175,22 @@ describe('selected-folder filesystem operations', () => {
       await expect(invoke('read', { path: 'escape/secret.txt' })).rejects.toThrow()
       await expect(invoke('write', { path: 'escape/new.txt', content: 'bad' })).rejects.toThrow()
     }
+  })
+})
+
+
+describe('local workspace terminal', () => {
+  it('switches a disposable Git repository to wzp using the platform shell', async () => {
+    const folder = root()
+    const result = await executeOperation(config(folder), 'bash', {
+      command: 'git init -q; git checkout -b wzp; git branch --show-current', timeoutMs: 10000
+    }, new AbortController().signal)
+    expect(result).toMatchObject({ exitCode: 0, timedOut: false, aborted: false })
+    expect(readFileSync(join(folder, '.git/HEAD'), 'utf8')).toBe('ref: refs/heads/wzp\n')
+    await expect(executeOperation(config(folder), 'bash', { command: 'git status', workdir: '..' }, new AbortController().signal)).rejects.toThrow()
+  })
+  it('does not start a command cancelled before execution', async () => {
+    const folder = root()
+    await expect(executeOperation(config(folder), 'bash', { command: 'echo should-not-run' }, AbortSignal.abort())).rejects.toThrow()
   })
 })

@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url'
 import { Gateway, serverOrigin } from './remote/gateway'
 import { FolderStore } from './remote/folder-store'
 import { RemoteController } from './remote/controller'
-import { executeFile } from './remote/filesystem-process'
+import { executeFile, waitForLocalOperations } from './remote/filesystem-process'
 
 app.setName('梯智 AI Desktop')
 app.setPath('userData', process.env.DSH_REMOTE_USER_DATA || join(app.getPath('appData'), 'tizhi-ai-desktop'))
@@ -127,7 +127,7 @@ async function bootstrap(): Promise<void> {
         layout()
       } else if (action === 'reload') view?.webContents.reload()
       else if (action === 'add') await controller?.add(async () => {
-        const result = await dialog.showOpenDialog(window, { title: '选择允许当前账号读写的本机目录', properties: ['openDirectory'] })
+        const result = await dialog.showOpenDialog(window, { title: '选择当前账号的本机工作区（含终端操作）', properties: ['openDirectory'] })
         return result.canceled ? null : result.filePaths[0] ?? null
       })
       else if ((action === 'enable' || action === 'disable') && typeof value === 'string') await controller?.setEnabled(value, action === 'enable')
@@ -159,11 +159,16 @@ async function bootstrap(): Promise<void> {
 if (!app.requestSingleInstanceLock()) app.quit()
 else {
   app.on('second-instance', () => { window?.show(); window?.focus() })
-  app.on('before-quit', () => {
+  let readyToQuit = false
+  app.on('before-quit', event => {
+    if (readyToQuit) return
+    event.preventDefault()
+    if (stopped) return
     stopped = true
     clearInterval(timer)
     removeCookieListener?.()
     controller?.dispose()
+    void waitForLocalOperations().finally(() => { readyToQuit = true; app.quit() })
   })
   app.whenReady().then(bootstrap).catch(error => {
     dialog.showErrorBox('桌面端启动失败', error instanceof Error ? error.message : '未知错误')

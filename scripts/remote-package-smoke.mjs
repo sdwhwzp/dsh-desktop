@@ -51,7 +51,7 @@ sockets.on('connection', peer => {
   peer.once('message', raw => {
     const hello = JSON.parse(raw.toString());
     assert.equal(hello.protocol, 2);
-    assert.equal(hello.shellEnabled, false);
+    assert.equal(hello.shellEnabled, true);
     assert.equal(hello.platform, process.platform);
     assert.equal(hello.root, folder);
     if (hello.type === 'pair') {
@@ -95,13 +95,38 @@ async function login(page, user) {
   await remoteEvaluate(`fetch('/gateway/login?user=${user}', {method:'POST'}).then(r => r.text())`);
   await eventually(async () => assert.match(await page.locator('#account').textContent(), new RegExp(user)));
 }
-async function fileRequest(operation, args) {
+async function fileRequest(operation, args, timeout = 15000) {
   const id = `${operation}-${Date.now()}`;
-  const response = once(activeSocket, 'message', { signal: AbortSignal.timeout(15_000) });
-  activeSocket.send(JSON.stringify({ type: 'request', id, operation, args }));
-  const value = JSON.parse((await response)[0].toString());
-  assert.equal(value.id, id);
-  return value;
+  const socket = activeSocket;
+  const response = new Promise((resolve, reject) => {
+    const cleanup = () => { clearTimeout(timer); socket.off('message', receive); };
+    const receive = raw => {
+      const value = JSON.parse(raw.toString());
+      if (value.id === id) { cleanup(); resolve(value); }
+    };
+    const timer = setTimeout(() => { cleanup(); reject(new Error(`No response for ${id}`)); }, timeout);
+    socket.on('message', receive);
+  });
+  socket.send(JSON.stringify({ type: 'request', id, operation, args }));
+  return await response;
+}
+
+
+async function startLongCommand(id) {
+  const script = `${id}.cjs`;
+  const pidPath = join(folder, `${id}.pid`);
+  await writeFile(join(folder, script), `const fs = require('node:fs'); process.on('SIGTERM', () => {}); setInterval(() => {}, 1000); fs.writeFileSync(${JSON.stringify(pidPath)}, String(process.pid));`);
+  // POSIX wait leaves a distinct shell leader, proving descendants are stopped too.
+  const command = process.platform === 'win32' ? `node ${script}` : `node ${script} & wait`;
+  activeSocket.send(JSON.stringify({ type: 'request', id, operation: 'bash', args: { command, timeoutMs: 60000 } }));
+  let pid;
+  await eventually(async () => { pid = Number(await readFile(pidPath, 'utf8')); assert.ok(pid > 0); });
+  return pid;
+}
+async function expectStopped(pid) {
+  await eventually(async () => {
+    assert.throws(() => process.kill(pid, 0), error => error.code === 'ESRCH');
+  });
 }
 
 try {
@@ -134,23 +159,48 @@ try {
   assert.equal(await readFile(join(folder, '验收/hello.txt'), 'utf8'), 'native worker verified');
   assert.equal((await fileRequest('read', { path: '验收/hello.txt' })).ok, true);
   assert.equal((await fileRequest('write', { path: '../escape.txt', content: 'must not write' })).ok, false);
-  assert.equal((await fileRequest('bash', { command: 'echo forbidden' })).ok, false);
-  results.push('native worker read/write; directory traversal and local shell denied');
+  const git = await fileRequest('bash', { command: 'git init -q; git checkout -b wzp; git branch --show-current' });
+  assert.equal(git.ok, true);
+  assert.equal(git.value.exitCode, 0);
+  assert.equal(git.value.timedOut, false);
+  assert.equal(await readFile(join(folder, '.git/HEAD'), 'utf8'), 'ref: refs/heads/wzp\n');
+  assert.equal((await fileRequest('bash', { command: 'git status', workdir: '..' })).ok, false);
+  results.push('native file operations and Git branch switch; initial workdir and file traversal rejected');
+  await writeFile(join(folder, 'long-command.cjs'), 'setTimeout(() => console.log("long-command-complete"), 31000)');
+  const long = await fileRequest('bash', { command: 'node long-command.cjs', timeoutMs: 60000 }, 70000);
+  assert.equal(long.ok, true);
+  assert.equal(long.value.exitCode, 0);
+  assert.equal(long.value.timedOut, false);
+  assert.match(long.value.stdout, /long-command-complete/);
+  const timed = await fileRequest('bash', { command: 'node long-command.cjs', timeoutMs: 100 });
+  assert.equal(timed.ok, true);
+  assert.equal(timed.value.timedOut, true);
+  results.push('shell can run beyond file-worker 30 s limit and honors its own timeout');
+  const cancelledPid = await startLongCommand('cancel-command');
+  activeSocket.send(JSON.stringify({ type: 'cancel', id: 'cancel-command' }));
+  await expectStopped(cancelledPid);
+  results.push('explicit cancellation terminates the running command tree');
   const encrypted = await readFile(join(profile, 'folders.enc'), 'utf8');
   assert.ok(!Buffer.from(encrypted, 'base64').toString().includes(token));
+  const logoutPid = await startLongCommand('logout-command');
   const closed = once(activeSocket, 'close');
   await page.locator('#logout').click(); await closed;
+  await expectStopped(logoutPid);
   await eventually(async () => assert.match(await page.locator('#account').textContent(), /未登录/));
   await login(page, 'bob');
   assert.equal(await page.locator('.folder').count(), 0);
   await login(page, 'alice');
   await eventually(async () => assert.equal(await page.locator('.online').textContent(), '已连接'));
   results.push('logout disconnects folders; accounts remain isolated; same account resumes');
+  const quitPid = await startLongCommand('quit-command');
   await client.close(); client = undefined;
+  await expectStopped(quitPid);
+  results.push('logout and application quit stop in-flight commands');
   page = await launch();
   await eventually(async () => assert.equal(await page.locator('.online').textContent(), '已连接'));
   assert.equal((await fileRequest('read', { path: '验收/hello.txt' })).ok, true);
-  results.push('encrypted grants and file access survive app restart');
+  assert.equal((await fileRequest('bash', { command: 'git branch --show-current' })).value.stdout.trim(), 'wzp');
+  results.push('encrypted grants, file access and terminal capability survive app restart');
   const report = { platform: process.platform, arch: process.arch, results, verifiedAt: new Date().toISOString() };
   console.log(JSON.stringify(report, null, 2));
   if (reportPath) { await mkdir(dirname(reportPath), { recursive: true }); await writeFile(reportPath, JSON.stringify(report, null, 2) + '\n'); }
