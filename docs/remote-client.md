@@ -48,3 +48,24 @@ Electron 的应用数据目录 `tizhi-ai-desktop` 保存服务器设置、按服
 `dev` 的远程客户端代码变更会触发 `Remote desktop Windows installer` Actions 流程，使用 Windows x64 主机打包 NSIS 安装程序。流程静默安装到独立临时目录，再运行真实 Electron 客户端，验证登录、网页隔离、本机文件读写、账号切换与重启恢复；测试使用本机模拟服务器，不连接 30 或使用线上账号。
 
 通过后的构件 `tizhi-ai-desktop-windows-x64` 包含安装程序、源码提交、SHA-256 与验证结果，保留 30 天。这是未签名的远程客户端构建；macOS 正式分发需要 Developer ID Application 证书和 Apple 公证，网站 HTTPS 证书不能用于应用签名。
+
+## Mac 签名与公证
+
+在 Xcode 的 Apple 账号设置中选择有证书权限的付费团队，通过 **Manage Certificates → Developer ID Application** 创建分发证书。证书与私钥保存在构建机钥匙串中；`security find-identity -v -p codesigning` 必须能找到有效的 Developer ID Application 身份。
+
+在 Apple 账号网页生成此应用的专用密码，然后在终端安全提示中输入一次，保存为公证配置；不要将密码放到命令参数、源码或部署包中：
+
+```sh
+xcrun notarytool store-credentials dsh-desktop-notary --apple-id YOUR_APPLE_ID --team-id YOUR_TEAM_ID
+```
+
+构建时通过钥匙串配置提交公证，并强制要求有效签名。`CSC_NAME` 使用证书中的名称和团队编号，省略 `Developer ID Application:` 前缀：
+
+```sh
+CSC_NAME='Your Name (TEAMID)' APPLE_KEYCHAIN_PROFILE=dsh-desktop-notary \
+  npm run package:remote:mac:arm64 -- --config.forceCodeSigning=true --config.dmg.sign=true
+```
+
+Electron Builder 会为应用签名、提交公证并附加票据，再生成 DMG 和 ZIP。若单独用 `notarytool` 公证应用 ZIP，应先给 `.app` 附加票据，再生成最终安装包；DMG 另外提交公证并附加票据。所有发布构件必须记录 Apple 返回的 `Accepted` 状态、SHA-256，以及 `codesign --verify --deep --strict`、`spctl --assess` 和 `xcrun stapler validate` 的结果，并运行 `scripts/remote-package-smoke.mjs` 验证实际签名应用。Apple 尚在处理、签名无效或测试失败时不能标记为已公证版本。
+
+公证配置和分发私钥是后续发布所需凭据，不属于测试清理内容。线上安装包与哈希验证通过后，清理本次临时应用、上传 ZIP、构建包和测试日志，保留源码、验证摘要和必要回滚资料。
