@@ -41,7 +41,7 @@ describe('remote gateway login', () => {
     for (const value of ['file:///etc', 'http://user:pass@server', DEFAULT_SERVER + '/gateway', DEFAULT_SERVER + '?token=secret']) {
       expect(() => serverOrigin(value)).toThrow()
     }
-    expect(companionEndpoint(DEFAULT_SERVER, { port: 3082, secure: false, publicUrl: '' })).toBe('ws://wh.gr-iot.cn:3082/')
+    expect(companionEndpoint(DEFAULT_SERVER, { port: 3082, secure: true, publicUrl: '' })).toBe('wss://gr.gr-iot.cn:3082/')
     expect(() => companionEndpoint('https://example.test', { publicUrl: 'ws://example.test' })).toThrow()
   })
   it('validates the authenticated account ID from server state, without accepting a renderer identity', async () => {

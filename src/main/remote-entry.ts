@@ -142,7 +142,7 @@ async function bootstrap(): Promise<void> {
   })
   await window.loadFile(shellFile)
   let target = DEFAULT_SERVER
-  let companion = 'ws://wh.gr-iot.cn:3082'
+  let companion = 'wss://gr.gr-iot.cn:3082'
   try {
     const settings = JSON.parse(readFileSync(join(app.getPath('userData'), 'server.json'), 'utf8'))
     target = serverOrigin(settings.server)

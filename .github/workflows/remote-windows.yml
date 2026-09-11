@@ -1,0 +1,77 @@
+name: Remote desktop Windows installer
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - '.github/workflows/remote-windows.yml'
+      - 'src/main/remote/**'
+      - 'src/main/remote-entry.ts'
+      - 'src/preload/remote.ts'
+      - 'src/remote/**'
+      - 'src/shared/remote.ts'
+      - 'vendor/local-workspace/**'
+      - 'electron-builder.remote.cjs'
+      - 'electron.vite.config.ts'
+      - 'scripts/*remote*'
+      - 'scripts/verify-target.mjs'
+      - 'test/remote-desktop.test.ts'
+      - 'package*.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: remote-windows-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.21.1'
+          cache: npm
+      - run: npm ci
+      - run: npm test -- test/remote-desktop.test.ts
+      - run: npm run typecheck
+      - run: npm run package:remote:win
+      - name: Install and verify the native Windows client
+        shell: pwsh
+        run: |
+          $installer = Get-Item 'dist/remote/tizhi-ai-desktop-win-x64.exe'
+          $installDir = Join-Path $env:RUNNER_TEMP 'tizhi-remote-installed'
+          $process = Start-Process -FilePath $installer.FullName -ArgumentList @('/S', "/D=$installDir") -PassThru -Wait
+          if ($process.ExitCode -ne 0) { throw "Installer exited with $($process.ExitCode)" }
+          $executable = Join-Path $installDir 'Tizhi AI Desktop.exe'
+          if (-not (Test-Path $executable)) { throw 'Installed client is missing' }
+          node scripts/remote-package-smoke.mjs "$executable" dist/remote/windows-verification.json
+          if ($LASTEXITCODE -ne 0) { throw 'Installed client smoke failed' }
+          $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($installer.Name)" | Set-Content -Encoding ascii dist/remote/SHA256SUMS
+          "${{ github.sha }}" | Set-Content -Encoding ascii dist/remote/COMMIT
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tizhi-ai-desktop-windows-x64
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            dist/remote/tizhi-ai-desktop-win-x64.exe
+            dist/remote/SHA256SUMS
+            dist/remote/COMMIT
+            dist/remote/windows-verification.json
+      - name: Clean installed test client
+        if: always()
+        shell: pwsh
+        run: |
+          $installDir = Join-Path $env:RUNNER_TEMP 'tizhi-remote-installed'
+          if (Test-Path $installDir) {
+            Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($installDir) } | Stop-Process -Force
+            Remove-Item $installDir -Recurse -Force
+          }

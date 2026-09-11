@@ -107,3 +107,5 @@ Formal release artifacts are built, signed, and published by the tag workflow. A
 ## Remote server build
 
 Use `npm run dev:remote` to build and start the server client. `npm run build:remote` and `npm run package:remote:dir` build its independent entry and package. Existing local-runtime commands keep their original behavior. See [the remote client guide](remote-client.md) for account and directory validation.
+
+The remote Windows workflow installs the NSIS artifact and runs `node scripts/remote-package-smoke.mjs <installed-executable> [report.json]` outside the checkout. The smoke uses temporary profiles, HTTP/WS fixtures and actual Electron file workers; it closes the client and removes its test data in teardown. It requires no production credentials.

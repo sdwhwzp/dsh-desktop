@@ -300,7 +300,8 @@
     "patch-package": "^8.0.1",
     "typescript": "5.9.3",
     "vitest": "^4.1.10",
-    "yaml": "^2.8.3"
+    "yaml": "^2.8.3",
+    "playwright": "1.63.0"
   },
   "overrides": {
     "koffi": "3.1.5"
