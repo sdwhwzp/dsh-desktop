@@ -1,12 +1,10 @@
 import type { RemoteAccount } from '../../shared/remote'
 
-export const DEFAULT_SERVER = 'https://gr.gr-iot.cn:3081'
-
 /** Only a complete HTTP(S) origin is a desktop connection target. */
 export function serverOrigin(value: string): string {
   const url = new URL(value)
   if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password ||
-      url.pathname !== '/' || url.search || url.hash) throw new Error('请输入完整服务器地址，例如 https://gr.gr-iot.cn:3081')
+      url.pathname !== '/' || url.search || url.hash) throw new Error('请输入完整服务器地址，例如 https://server.example:3081')
   return url.origin
 }
 

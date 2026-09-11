@@ -4,12 +4,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { once } from 'node:events'
 import { WebSocketServer, type WebSocket } from 'ws'
-import { DEFAULT_SERVER, Gateway, serverOrigin, companionEndpoint } from '../src/main/remote/gateway'
+import { Gateway, serverOrigin, companionEndpoint } from '../src/main/remote/gateway'
 import { FolderStore, type FolderGrant } from '../src/main/remote/folder-store'
 import { FolderConnection } from '../src/main/remote/connection'
 import { RemoteController } from '../src/main/remote/controller'
 import { executeOperation } from '../vendor/local-workspace/local-workspace-cli'
 
+const TEST_SERVER = 'https://server.example:3081'
 const roots: string[] = []
 const disposers: Array<() => void | Promise<void>> = []
 afterEach(async () => {
@@ -24,7 +25,7 @@ const secrets = {
   decryptString: (value: Buffer) => Buffer.from(value.map(byte => byte ^ 37)).toString()
 }
 function grant(folder = root()): FolderGrant {
-  return { id: 'workspace-fixture', server: DEFAULT_SERVER, accountId: 2, root: folder, name: 'Fixture', enabled: true, endpoint: 'ws://127.0.0.1:1', token: 't'.repeat(43) }
+  return { id: 'workspace-fixture', server: TEST_SERVER, accountId: 2, root: folder, name: 'Fixture', enabled: true, endpoint: 'ws://127.0.0.1:1', token: 't'.repeat(43) }
 }
 function config(folder: string) { return { root: folder, server: '', deviceName: '', workspaceId: '', workspaceName: '', shellEnabled: false } }
 async function wsFixture() {
@@ -38,18 +39,18 @@ async function wsFixture() {
 
 describe('remote gateway login', () => {
   it('accepts exact origins and rejects credentials, paths and non-HTTP targets', () => {
-    expect(serverOrigin(DEFAULT_SERVER + '/')).toBe(DEFAULT_SERVER)
-    for (const value of ['file:///etc', 'http://user:pass@server', DEFAULT_SERVER + '/gateway', DEFAULT_SERVER + '?token=secret']) {
+    expect(serverOrigin(TEST_SERVER + '/')).toBe(TEST_SERVER)
+    for (const value of ['file:///etc', 'http://user:pass@server', TEST_SERVER + '/gateway', TEST_SERVER + '?token=secret']) {
       expect(() => serverOrigin(value)).toThrow()
     }
-    expect(companionEndpoint(DEFAULT_SERVER, { port: 3082, secure: true, publicUrl: '' })).toBe('wss://gr.gr-iot.cn:3082/')
+    expect(companionEndpoint(TEST_SERVER, { port: 3082, secure: true, publicUrl: '' })).toBe('wss://server.example:3082/')
     expect(() => companionEndpoint('https://example.test', { publicUrl: 'ws://example.test' })).toThrow()
   })
   it('validates the authenticated account ID from server state, without accepting a renderer identity', async () => {
     const fetcher = vi.fn(async () => Response.json({ ok: true, me: { username: 'alice', role: 'user' }, users: [{ id: 2, username: 'alice' }] }))
-    const gateway = new Gateway(DEFAULT_SERVER, fetcher)
+    const gateway = new Gateway(TEST_SERVER, fetcher)
     expect(await gateway.account()).toEqual({ id: 2, username: 'alice', role: 'user' })
-    expect(fetcher).toHaveBeenCalledWith(DEFAULT_SERVER + '/api/dsh-passwords/state', expect.objectContaining({ credentials: 'include', redirect: 'error' }))
+    expect(fetcher).toHaveBeenCalledWith(TEST_SERVER + '/api/dsh-passwords/state', expect.objectContaining({ credentials: 'include', redirect: 'error' }))
     fetcher.mockResolvedValueOnce(Response.json({ ok: true, me: { username: 'alice', role: 'user' }, users: [{ id: 3, username: 'bob' }] }))
     await expect(gateway.account()).rejects.toThrow('账号编号')
   })
@@ -63,8 +64,8 @@ describe('saved local folder grants', () => {
     store.save(row)
     expect(readFileSync(file, 'utf8')).not.toContain(row.token)
     const loaded = new FolderStore(file, secrets)
-    expect(loaded.list(DEFAULT_SERVER, 2)).toEqual([row])
-    expect(loaded.list(DEFAULT_SERVER, 3)).toEqual([])
+    expect(loaded.list(TEST_SERVER, 2)).toEqual([row])
+    expect(loaded.list(TEST_SERVER, 3)).toEqual([])
     expect(loaded.list('https://other.test', 2)).toEqual([])
     expect(() => new FolderStore(join(root(), 'blocked'), { ...secrets, isEncryptionAvailable: () => false }).save(row)).toThrow('钥匙串')
   })
@@ -134,7 +135,7 @@ describe('companion connection', () => {
 
 describe('account transition', () => {
   it('cancels a native directory selection when the user logs out during the dialog', async () => {
-    const gateway = new Gateway(DEFAULT_SERVER, async () => Response.json({ ok: true, me: { username: 'alice', role: 'user' }, users: [{ id: 2, username: 'alice' }] }))
+    const gateway = new Gateway(TEST_SERVER, async () => Response.json({ ok: true, me: { username: 'alice', role: 'user' }, users: [{ id: 2, username: 'alice' }] }))
     const controller = new RemoteController(gateway, new FolderStore(join(root(), 'store'), secrets), vi.fn(), () => {})
     disposers.push(() => controller.dispose())
     await controller.refresh()

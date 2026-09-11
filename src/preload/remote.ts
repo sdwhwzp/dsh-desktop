@@ -20,8 +20,8 @@ window.addEventListener('DOMContentLoaded', () => {
     element('account').textContent = state.account ? `${state.account.username} · ${state.account.role === 'admin' ? '管理员' : '普通账号'}` : '未登录'
     element<HTMLButtonElement>('add').disabled = busy || !state.account
     element<HTMLButtonElement>('logout').disabled = busy || !state.account
-    element('connection').textContent = state.error ? '连接需检查' : state.account ? '服务器已连接' : '等待登录'
-    notice.textContent = actionError ?? state.error ?? (state.account ? '选择目录后，可在服务器工作区列表中使用。' : '请点击「返回会话」，使用原有账号和密码登录。')
+    element('connection').textContent = state.error ? '连接需检查' : state.account ? '服务器已连接' : state.server ? '等待登录' : '请填写服务器'
+    notice.textContent = actionError ?? state.error ?? (state.account ? '选择目录后，可在服务器工作区列表中使用。' : state.server ? '请点击「返回会话」，使用原有账号和密码登录。' : '填写服务器地址并连接，然后使用已有账号登录。')
     folders.replaceChildren()
     if (!state.folders.length) {
       const empty = document.createElement('p')

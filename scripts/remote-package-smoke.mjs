@@ -108,10 +108,18 @@ try {
   await mkdir(profile); await mkdir(folder);
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const origin = `http://127.0.0.1:${server.address().port}`;
-  await writeFile(join(profile, 'server.json'), JSON.stringify({ server: origin, companion: origin.replace('http:', 'ws:') }));
   let page = await launch();
+  assert.equal(await page.locator('#server').inputValue(), '');
+  assert.equal(await page.locator('#companion').inputValue(), '');
+  assert.deepEqual(await client.evaluate(({ webContents }) => webContents.getAllWebContents().map(c => c.getURL()).filter(url => /^https?:/.test(url))), []);
+  results.push('first launch leaves both addresses empty and opens no remote page');
+  await page.locator('#server').fill(origin);
+  await page.locator('#companion').fill(origin.replace('http:', 'ws:'));
+  await page.locator('#server-form button').click();
+  await eventually(async () => assert.equal(await remoteEvaluate('location.origin'), origin));
   await eventually(async () => assert.match(await page.locator('#account').textContent(), /未登录/));
   await login(page, 'alice');
+  await page.locator('#folders-page').click();
   assert.equal(await remoteEvaluate('typeof require'), 'undefined');
   assert.equal(await remoteEvaluate('typeof process'), 'undefined');
   const preferences = await client.evaluate(({ webContents }) => {

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { DEFAULT_SERVER, Gateway, serverOrigin } from './remote/gateway'
+import { Gateway, serverOrigin } from './remote/gateway'
 import { FolderStore } from './remote/folder-store'
 import { RemoteController } from './remote/controller'
 import { executeFile } from './remote/filesystem-process'
@@ -24,8 +24,11 @@ function trusted(event: IpcMainInvokeEvent): void {
   if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame ||
       event.senderFrame.url !== shellUrl) throw new Error('只允许桌面管理页调用此操作')
 }
+function snapshot() {
+  return controller?.snapshot() ?? { server: '', companion: '', account: null, folders: [], error: null }
+}
 function publish(): void {
-  if (!stopped && window && !window.isDestroyed()) window.webContents.send('remote:changed', controller?.snapshot())
+  if (!stopped && window && !window.isDestroyed()) window.webContents.send('remote:changed', snapshot())
 }
 function layout(): void {
   if (!view || window.isDestroyed()) return
@@ -111,7 +114,7 @@ async function bootstrap(): Promise<void> {
     { label: '编辑', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
     { label: '窗口', submenu: [{ label: '刷新服务器页面', accelerator: 'CmdOrCtrl+R', click: () => view?.webContents.reload() }, { role: 'togglefullscreen' }, { role: 'minimize' }] }
   ]))
-  ipcMain.handle('remote:state', event => { trusted(event); return controller?.snapshot() })
+  ipcMain.handle('remote:state', event => { trusted(event); return snapshot() })
   let busy = false
   ipcMain.handle('remote:action', async (event, action: unknown, value: unknown) => {
     trusted(event)
@@ -137,19 +140,20 @@ async function bootstrap(): Promise<void> {
         showingFolders = false
         layout()
       } else throw new Error('未知桌面操作')
-      return controller?.snapshot()
+      return snapshot()
     } finally { busy = false }
   })
   await window.loadFile(shellFile)
-  let target = DEFAULT_SERVER
-  let companion = 'wss://gr.gr-iot.cn:3082'
+  let target = ''
+  let companion = ''
   try {
     const settings = JSON.parse(readFileSync(join(app.getPath('userData'), 'server.json'), 'utf8'))
     target = serverOrigin(settings.server)
     companion = typeof settings.companion === 'string' ? settings.companion : ''
   }
-  catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') console.warn('服务器设置不可用，使用默认 30 地址') }
-  await connect(target, companion)
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') console.warn('服务器设置不可用，请重新填写') }
+  if (target) await connect(target, companion)
+  else { showingFolders = true; publish() }
 }
 
 if (!app.requestSingleInstanceLock()) app.quit()
