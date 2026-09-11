@@ -17,6 +17,10 @@ on:
       - 'scripts/verify-target.mjs'
       - 'test/remote-desktop.test.ts'
       - 'package*.json'
+      - 'build/app-icon.png'
+      - 'build/icon.icns'
+      - 'build/icon.ico'
+      - 'scripts/generate-app-icons.mjs'
   workflow_dispatch:
 
 permissions:
