@@ -16,7 +16,8 @@ afterEach(async () => {
   for (const dispose of disposers.splice(0).reverse()) await dispose()
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
-function root(): string { const value = realpathSync(mkdtempSync(join(tmpdir(), 'dsh-remote-'))); roots.push(value); return value }
+// Match fs/promises.realpath, including Windows short-name expansion in runner temp paths.
+function root(): string { const value = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-remote-'))); roots.push(value); return value }
 const secrets = {
   isEncryptionAvailable: () => true,
   encryptString: (value: string) => Buffer.from(Buffer.from(value).map(byte => byte ^ 37)),
