@@ -49,6 +49,8 @@ Electron 的应用数据目录 `tizhi-ai-desktop` 保存服务器设置、按服
 
 通过后的构件 `tizhi-ai-desktop-windows-x64` 包含安装程序、源码提交、SHA-256 与验证结果，保留 30 天。这是未签名的远程客户端构建；macOS 正式分发需要 Developer ID Application 证书和 Apple 公证，网站 HTTPS 证书不能用于应用签名。
 
+真实 Git 命令测试的等待上限为 20 秒，大于命令自身的 10 秒期限；测试结束时先取消并等待命令退出，再移除临时工作目录。清理钩子同样保留 20 秒，避免 Windows 上仍持有目录的进程与删除操作并行。
+
 ## Mac 签名与公证
 
 在 Xcode 的 Apple 账号设置中选择有证书权限的付费团队，通过 **Manage Certificates → Developer ID Application** 创建分发证书。证书与私钥保存在构建机钥匙串中；`security find-identity -v -p codesigning` 必须能找到有效的 Developer ID Application 身份。

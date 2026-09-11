@@ -16,7 +16,7 @@ const disposers: Array<() => void | Promise<void>> = []
 afterEach(async () => {
   for (const dispose of disposers.splice(0).reverse()) await dispose()
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
-})
+}, 20_000)
 // Match fs/promises.realpath, including Windows short-name expansion in runner temp paths.
 function root(): string { const value = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-remote-'))); roots.push(value); return value }
 const secrets = {
@@ -182,13 +182,18 @@ describe('selected-folder filesystem operations', () => {
 describe('local workspace terminal', () => {
   it('switches a disposable Git repository to wzp using the platform shell', async () => {
     const folder = root()
-    const result = await executeOperation(config(folder), 'bash', {
+    const controller = new AbortController()
+    const operation = executeOperation(config(folder), 'bash', {
       command: 'git init -q; git checkout -b wzp; git branch --show-current', timeoutMs: 10000
-    }, new AbortController().signal)
+    }, controller.signal)
+    // Stop and join the command before afterEach removes its working directory, including test timeouts.
+    disposers.push(async () => { controller.abort(); await Promise.allSettled([operation]) })
+    const result = await operation
     expect(result).toMatchObject({ exitCode: 0, timedOut: false, aborted: false })
     expect(readFileSync(join(folder, '.git/HEAD'), 'utf8')).toBe('ref: refs/heads/wzp\n')
     await expect(executeOperation(config(folder), 'bash', { command: 'git status', workdir: '..' }, new AbortController().signal)).rejects.toThrow()
-  })
+  // The command owns a 10 s deadline; the test also waits for shell startup and process-tree cleanup.
+  }, 20_000)
   it('does not start a command cancelled before execution', async () => {
     const folder = root()
     await expect(executeOperation(config(folder), 'bash', { command: 'echo should-not-run' }, AbortSignal.abort())).rejects.toThrow()
