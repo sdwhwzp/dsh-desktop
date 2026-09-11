@@ -119,7 +119,7 @@ describe('companion connection', () => {
     expect(pendingSignal?.aborted).toBe(true)
     await closed
   })
-  it.each(['read', 'bash'])('refuses %s if authentication changes before a request', async operation => {
+  it.each(['read', 'bash', 'files'])('refuses %s if authentication changes before a request', async operation => {
     const { server, endpoint } = await wsFixture()
     const row = { ...grant(), endpoint }
     let socket!: WebSocket
@@ -158,6 +158,14 @@ describe('account transition', () => {
 })
 
 describe('selected-folder filesystem operations', () => {
+  it('lists and previews selected-folder files without Shell', async () => {
+    const folder = root()
+    writeFileSync(join(folder, '中文 文件.txt'), 'content')
+    const run = (args: Record<string, unknown>) => executeOperation({ ...config(folder), shellEnabled: false }, 'files', args, new AbortController().signal)
+    expect(await run({ action: 'list', path: '.' })).toMatchObject({ entries: [{ name: '中文 文件.txt', type: 'file' }] })
+    expect(await run({ action: 'readBytes', path: '中文 文件.txt' })).toMatchObject({ data: Buffer.from('content').toString('base64'), eof: true })
+    await expect(run({ action: 'readBytes', path: '../outside' })).rejects.toThrow()
+  })
   it('reads, creates and edits files while rejecting traversal and outside symlinks', async () => {
     const folder = root()
     const outside = root()

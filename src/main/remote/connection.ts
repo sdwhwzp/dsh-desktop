@@ -3,9 +3,9 @@ import WebSocket from 'ws'
 import type { FolderGrant } from './folder-store'
 import { record } from './gateway'
 
-export type FileOperation = 'read' | 'write' | 'edit' | 'glob' | 'grep' | 'bash'
+export type FileOperation = 'read' | 'write' | 'edit' | 'glob' | 'grep' | 'bash' | 'files'
 export type ExecuteFile = (root: string, operation: FileOperation, args: Record<string, unknown>, signal: AbortSignal) => Promise<unknown>
-const fileOperations = new Set(['read', 'write', 'edit', 'glob', 'grep', 'bash'])
+const fileOperations = new Set(['read', 'write', 'edit', 'glob', 'grep', 'bash', 'files'])
 const MAX_FRAME = 3 * 1024 * 1024
 
 /** One outbound, account-bound connection. Stop aborts operations and disables all reconnects. */
