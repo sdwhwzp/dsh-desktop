@@ -24,6 +24,28 @@ function trusted(event: IpcMainInvokeEvent): void {
   if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame ||
       event.senderFrame.url !== shellUrl) throw new Error('只允许桌面管理页调用此操作')
 }
+/**
+ * Ask the user to confirm that this computer's screen and input devices may be
+ * driven by the agent. The dialog is owned by the main process so the grant
+ * cannot be turned on without it.
+ * @returns whether the user confirmed.
+ */
+async function confirmDesktopControl(): Promise<boolean> {
+  const result = await dialog.showMessageBox(window, {
+    type: 'warning',
+    buttons: ['取消', '允许控制桌面'],
+    defaultId: 0,
+    cancelId: 0,
+    title: '允许控制本机桌面',
+    message: '允许 Agent 截取本机屏幕并操作鼠标键盘？',
+    detail: '截屏会拍到屏幕上全部可见窗口，包括密码管理器、邮件和私人聊天。\n'
+      + '鼠标键盘操作会进入当前获得焦点的窗口。\n'
+      + '此授权独立于文件与终端权限，可随时关闭。',
+    noLink: true,
+  })
+  return result.response === 1
+}
+
 function snapshot() {
   return controller?.snapshot() ?? { server: '', companion: '', account: null, folders: [], error: null }
 }
@@ -131,6 +153,9 @@ async function bootstrap(): Promise<void> {
         return result.canceled ? null : result.filePaths[0] ?? null
       })
       else if ((action === 'enable' || action === 'disable') && typeof value === 'string') await controller?.setEnabled(value, action === 'enable')
+      else if (action === 'desktop' && value && typeof value === 'object' && 'id' in value && 'enabled' in value && typeof value.id === 'string' && typeof value.enabled === 'boolean') {
+        if (!value.enabled || await confirmDesktopControl()) await controller?.setDesktopControl(value.id, value.enabled)
+      }
       else if (action === 'remove' && typeof value === 'string') await controller?.remove(value)
       else if (action === 'logout' && controller) {
         const origin = controller.gateway.origin

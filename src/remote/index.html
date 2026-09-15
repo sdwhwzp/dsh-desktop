@@ -14,7 +14,7 @@
   </header>
   <main><div class="content">
     <div class="heading"><div><p class="eyebrow">桌面连接</p><h1>本机目录</h1></div><button class="primary" id="add" disabled>＋ 选择本机目录</button></div>
-    <p class="description">本机终端已启用。当前账号的 Agent 可在所选工作区读写文件、执行 Git、安装依赖和运行构建。命令以当前系统用户身份运行，可访问该用户有权限访问的文件。</p>
+    <p class="description">本机终端已启用。当前账号的 Agent 可在所选工作区读写文件、执行 Git、安装依赖和运行构建。命令以当前系统用户身份运行，可访问该用户有权限访问的文件。<br />桌面控制默认关闭，需要逐个目录单独开启：开启后 Agent 可以截取本机屏幕并操作鼠标键盘，截屏会拍到全部可见窗口，输入会进入当前焦点窗口。</p>
     <section class="server-card" aria-label="服务器与账号">
       <form id="server-form"><label for="server">服务器地址</label><div class="input-row"><input id="server" type="url" required value="https://server.example:3081" spellcheck="false" /><button type="submit">连接服务器</button></div><label for="companion" class="companion-label">目录连接地址（留空使用服务器配置）</label><div class="input-row"><input id="companion" type="url" placeholder="wss://server.example:3082" spellcheck="false" /></div></form>
       <div class="account-row"><span id="account">未登录</span><button id="logout" disabled>退出账号</button></div>

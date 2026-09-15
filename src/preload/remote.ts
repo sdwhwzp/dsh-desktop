@@ -40,10 +40,17 @@ window.addEventListener('DOMContentLoaded', () => {
       path.textContent = folder.root
       const status = document.createElement('p')
       status.className = folder.status === '已连接' ? 'online' : 'muted'
-      status.textContent = folder.status
+      status.textContent = folder.status + (folder.desktopControl ? ' · 可控制桌面' : '')
       details.append(name, path, status)
       const actions = document.createElement('div')
       actions.className = 'actions'
+      const desktop = document.createElement('button')
+      desktop.textContent = folder.desktopControl ? '关闭桌面控制' : '允许控制桌面'
+      desktop.disabled = busy
+      desktop.title = '允许 Agent 截取本机屏幕并操作鼠标键盘。截屏会拍到全部可见窗口，包括密码管理器和私人聊天；输入会进入当前焦点窗口。'
+      // Enabling is confirmed by the main process, where a compromised renderer
+      // cannot skip the dialog.
+      desktop.onclick = () => { void act('desktop', { id: folder.id, enabled: !folder.desktopControl }) }
       const toggle = document.createElement('button')
       toggle.textContent = folder.enabled ? '断开' : '连接'
       toggle.disabled = busy
@@ -52,7 +59,7 @@ window.addEventListener('DOMContentLoaded', () => {
       remove.textContent = '移除接入'
       remove.disabled = busy
       remove.onclick = () => { void act('remove', folder.id) }
-      actions.append(toggle, remove)
+      actions.append(desktop, toggle, remove)
       row.append(details, actions)
       folders.appendChild(row)
     }

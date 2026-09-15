@@ -21,6 +21,7 @@ export class RemoteController {
     return { server: this.gateway.origin, companion: this.gateway.endpointOverride, account: this.account, error: this.error,
       folders: this.account ? this.store.list(this.gateway.origin, this.account.id).map(grant => ({
         id: grant.id, root: grant.root, name: grant.name, enabled: grant.enabled,
+        desktopControl: grant.desktopControl,
         status: this.connections.get(grant.id)?.snapshot() ?? (grant.enabled ? '等待连接' : '已断开')
       })) : [] }
   }
@@ -70,8 +71,11 @@ export class RemoteController {
     if (existing) { await this.setEnabled(existing.id, true); return }
     const pairing = await this.gateway.pair()
     await this.authorize(owner.id, epoch)
+    // A new folder never starts with desktop control; the user turns it on for
+    // that folder afterwards, which reconnects with the grant in its handshake.
     const grant: FolderGrant = { id: randomUUID(), server: this.gateway.origin, accountId: owner.id,
-      root, name: basename(root).slice(0, 120) || root, enabled: true, token: '', endpoint: pairing.endpoint }
+      root, name: basename(root).slice(0, 120) || root, enabled: true, token: '', endpoint: pairing.endpoint,
+      desktopControl: false }
     const connection = this.start(grant, pairing.code)
     try { await connection.ready } catch (error) {
       connection.client.stop()
@@ -95,6 +99,30 @@ export class RemoteController {
     if (enabled) this.start(grant)
     this.changed()
   }
+  /**
+   * Turn desktop control on or off for one folder.
+   *
+   * The grant travels in the companion handshake, so the live connection is
+   * replaced rather than updated: a socket that authenticated without the grant
+   * must not start answering screen captures.
+   * @param id - the folder to change.
+   * @param desktopControl - the new grant.
+   */
+  async setDesktopControl(id: string, desktopControl: boolean): Promise<void> {
+    const owner = this.requireAccount()
+    await this.authorize(owner.id, this.epoch)
+    const grant = this.ownedGrant(id)
+    if (grant.desktopControl === desktopControl) return
+    grant.desktopControl = desktopControl
+    this.store.save(grant)
+    if (grant.enabled) {
+      this.connections.get(id)?.stop()
+      this.connections.delete(id)
+      this.start(grant)
+    }
+    this.changed()
+  }
+
   async remove(id: string): Promise<void> {
     const grant = this.ownedGrant(id)
     await this.setEnabled(id, false)

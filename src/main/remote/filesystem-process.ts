@@ -9,7 +9,7 @@ const pending = new Set<Promise<void>>()
 export async function waitForLocalOperations(): Promise<void> { await Promise.all([...pending]) }
 
 /** Each request owns a worker; cancellation lets the companion terminate its shell tree first. */
-export const executeFile: ExecuteFile = (root, operation, args, signal) => new Promise((resolve, reject) => {
+export const executeFile: ExecuteFile = (root, operation, args, signal, desktopControl) => new Promise((resolve, reject) => {
   if (signal.aborted) { reject(new Error('本机操作已取消')); return }
   const child = utilityProcess.fork(join(__dirname, 'filesystem-worker.js'), [], { stdio: 'ignore', serviceName: 'Tizhi Local Workspace' })
   let exited!: () => void
@@ -39,13 +39,14 @@ export const executeFile: ExecuteFile = (root, operation, args, signal) => new P
   }
   const abort = () => cancel(new Error('本机操作已取消'))
   // Shell validates its requested timeout (default 120 s, maximum 600 s) inside the worker.
-  const deadline = operation === 'bash' ? 605_000 : 30_000
+  // A desktop action can carry its own wait, which the companion caps at 5 s.
+  const deadline = operation === 'bash' ? 605_000 : operation === 'input' ? 60_000 : 30_000
   const timer = setTimeout(() => cancel(new Error('本机操作超时，已停止')), deadline)
   signal.addEventListener('abort', abort, { once: true })
   child.once('spawn', () => {
     spawned = true
     if (cancelled) { finish(cancelled); return }
-    child.postMessage({ type: 'run', request: { root, operation, args } })
+    child.postMessage({ type: 'run', request: { root, operation, args, desktopControl } })
   })
   child.once('exit', () => { exited(); finish(new Error('本机操作进程已退出')) })
   child.once('message', value => {

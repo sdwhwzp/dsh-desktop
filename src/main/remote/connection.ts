@@ -3,9 +3,17 @@ import WebSocket from 'ws'
 import type { FolderGrant } from './folder-store'
 import { record } from './gateway'
 
-export type FileOperation = 'read' | 'write' | 'edit' | 'glob' | 'grep' | 'bash' | 'files'
-export type ExecuteFile = (root: string, operation: FileOperation, args: Record<string, unknown>, signal: AbortSignal) => Promise<unknown>
+export type FileOperation = 'read' | 'write' | 'edit' | 'glob' | 'grep' | 'bash' | 'files' | 'screenshot' | 'input'
+export type ExecuteFile = (
+  root: string,
+  operation: FileOperation,
+  args: Record<string, unknown>,
+  signal: AbortSignal,
+  desktopControl: boolean
+) => Promise<unknown>
 const fileOperations = new Set(['read', 'write', 'edit', 'glob', 'grep', 'bash', 'files'])
+/** Operations that observe or drive the screen, admitted only by a granted folder. */
+const desktopOperations = new Set(['screenshot', 'input'])
 const MAX_FRAME = 3 * 1024 * 1024
 
 /** One outbound, account-bound connection. Stop aborts operations and disables all reconnects. */
@@ -52,7 +60,7 @@ export class FolderConnection {
           type: code ? 'pair' : 'resume', ...(code ? { code } : { token: this.grant.token }),
           protocol: 2, workspaceId: this.grant.id, root: this.grant.root,
           workspaceName: this.grant.name, deviceName: os.hostname().slice(0, 80), platform: process.platform,
-          shellEnabled: true
+          shellEnabled: true, desktopControl: this.grant.desktopControl
         }))
       })
       socket.on('message', raw => {
@@ -91,11 +99,22 @@ export class FolderConnection {
           if (this.running.size >= 8) throw new Error('并发目录请求过多')
           this.running.set(id, controller)
           try {
-            if (!fileOperations.has(String(message.operation))) throw new Error('此接入仅支持文件与终端操作')
+            const operation = String(message.operation)
+            // The grant this socket authenticated with decides what it admits;
+            // turning desktop control on replaces the connection rather than
+            // widening this one.
+            if (desktopOperations.has(operation) && !this.grant.desktopControl) {
+              throw new Error('此目录未开启桌面控制')
+            }
+            if (!fileOperations.has(operation) && !desktopOperations.has(operation)) {
+              throw new Error('此接入仅支持文件、终端与桌面操作')
+            }
             const args = record(message.args)
             await this.authorize()
             if (!alive() || controller.signal.aborted) return
-            const value = await this.execute(this.grant.root, message.operation as FileOperation, args, controller.signal)
+            const value = await this.execute(
+              this.grant.root, operation as FileOperation, args, controller.signal, this.grant.desktopControl
+            )
             if (alive() && !controller.signal.aborted) socket.send(JSON.stringify({ type: 'response', id, ok: true, value }))
           } catch (error) {
             if (alive()) socket.send(JSON.stringify({ type: 'response', id, ok: false, code: 'LOCAL_ACCESS_FAILED', error: error instanceof Error ? error.message : '文件操作失败' }))

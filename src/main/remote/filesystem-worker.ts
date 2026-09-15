@@ -3,7 +3,9 @@
 import { realpath, stat } from 'node:fs/promises'
 import { executeOperation } from '../../../vendor/local-workspace/local-workspace-cli'
 
-interface Request { root: string; operation: 'read' | 'write' | 'edit' | 'glob' | 'grep' | 'bash' | 'files'; args: Record<string, unknown> }
+const allowed = ['read', 'write', 'edit', 'glob', 'grep', 'bash', 'files', 'screenshot', 'input']
+type Operation = 'read' | 'write' | 'edit' | 'glob' | 'grep' | 'bash' | 'files' | 'screenshot' | 'input'
+interface Request { root: string; operation: Operation; args: Record<string, unknown>; desktopControl: boolean }
 type Message = { type: 'run'; request: Request } | { type: 'cancel' }
 const port = (process as NodeJS.Process & {
   parentPort?: { on(event: 'message', listener: (event: { data: Message }) => void): void; postMessage(message: unknown): void }
@@ -14,10 +16,14 @@ let started = false
 async function run(request: Request): Promise<void> {
   const send = (value: unknown) => port ? port.postMessage(value) : process.send?.(value)
   try {
-    if (!['read', 'write', 'edit', 'glob', 'grep', 'bash', 'files'].includes(request.operation)) throw new Error('本机操作未授权')
-    if (await realpath(request.root) !== request.root || !(await stat(request.root)).isDirectory()) throw new Error('授权目录已移动或被替换，请重新选择')
+    if (!allowed.includes(request.operation)) throw new Error('本机操作未授权')
+    // The screen is not inside the authorized folder, so a desktop operation
+    // does not require one; every other operation still resolves it first.
+    if (request.operation !== 'screenshot' && request.operation !== 'input') {
+      if (await realpath(request.root) !== request.root || !(await stat(request.root)).isDirectory()) throw new Error('授权目录已移动或被替换，请重新选择')
+    }
     controller.signal.throwIfAborted()
-    const value = await executeOperation({ root: request.root, shellEnabled: true, server: '', workspaceId: '', deviceName: '', workspaceName: '' }, request.operation, request.args, controller.signal)
+    const value = await executeOperation({ root: request.root, shellEnabled: true, desktopControl: request.desktopControl === true, server: '', workspaceId: '', deviceName: '', workspaceName: '' }, request.operation, request.args, controller.signal)
     send({ ok: true, value })
   } catch (error) { send({ ok: false, error: error instanceof Error ? error.message : '文件操作失败' }) }
 }

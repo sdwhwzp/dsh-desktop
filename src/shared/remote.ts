@@ -5,6 +5,8 @@ export interface RemoteFolder {
   root: string
   name: string
   enabled: boolean
+  /** Whether the agent may capture this screen and drive its mouse and keyboard. */
+  desktopControl: boolean
   status: string
 }
 export interface RemoteState {

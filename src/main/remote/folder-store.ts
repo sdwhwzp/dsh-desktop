@@ -6,6 +6,8 @@ import { dirname } from 'node:path'
 export interface FolderGrant {
   id: string; server: string; accountId: number; root: string; name: string
   enabled: boolean; endpoint: string; token: string
+  /** Whether the agent may capture this screen and drive its mouse and keyboard. */
+  desktopControl: boolean
 }
 
 export interface SecretStorage {
@@ -25,7 +27,7 @@ export class FolderStore {
     }
     const parsed: unknown = JSON.parse(this.secrets.decryptString(Buffer.from(data, 'base64')))
     if (!Array.isArray(parsed) || !parsed.every(isGrant)) throw new Error('本机目录授权记录损坏，请恢复备份')
-    this.rows = parsed
+    this.rows = parsed.map(row => ({ ...row, desktopControl: row.desktopControl === true }))
   }
   list(server: string, accountId: number): FolderGrant[] {
     return this.rows.filter(row => row.server === server && row.accountId === accountId).map(row => ({ ...row }))
@@ -48,6 +50,9 @@ export class FolderStore {
 function isGrant(value: unknown): value is FolderGrant {
   if (!value || typeof value !== 'object') return false
   const row = value as Record<string, unknown>
+  // Grants written before desktop control existed omit the field; they load as
+  // ungranted rather than being rejected as corrupt.
   return ['id', 'server', 'root', 'name', 'endpoint', 'token'].every(key => typeof row[key] === 'string') &&
-    Number.isSafeInteger(row.accountId) && Number(row.accountId) > 0 && typeof row.enabled === 'boolean'
+    Number.isSafeInteger(row.accountId) && Number(row.accountId) > 0 && typeof row.enabled === 'boolean' &&
+    (row.desktopControl === undefined || typeof row.desktopControl === 'boolean')
 }

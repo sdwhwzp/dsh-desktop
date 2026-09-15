@@ -25,9 +25,9 @@ const secrets = {
   decryptString: (value: Buffer) => Buffer.from(value.map(byte => byte ^ 37)).toString()
 }
 function grant(folder = root()): FolderGrant {
-  return { id: 'workspace-fixture', server: TEST_SERVER, accountId: 2, root: folder, name: 'Fixture', enabled: true, endpoint: 'ws://127.0.0.1:1', token: 't'.repeat(43) }
+  return { id: 'workspace-fixture', server: TEST_SERVER, accountId: 2, root: folder, name: 'Fixture', enabled: true, endpoint: 'ws://127.0.0.1:1', token: 't'.repeat(43), desktopControl: false }
 }
-function config(folder: string) { return { root: folder, server: '', deviceName: '', workspaceId: '', workspaceName: '', shellEnabled: true } }
+function config(folder: string) { return { root: folder, server: '', deviceName: '', workspaceId: '', workspaceName: '', shellEnabled: true, desktopControl: false } }
 async function wsFixture() {
   const server = new WebSocketServer({ host: '127.0.0.1', port: 0 })
   disposers.push(async () => { for (const client of server.clients) client.terminate(); await new Promise<void>(resolve => server.close(() => resolve())) })
@@ -205,5 +205,72 @@ describe('local workspace terminal', () => {
   it('does not start a command cancelled before execution', async () => {
     const folder = root()
     await expect(executeOperation(config(folder), 'bash', { command: 'echo should-not-run' }, AbortSignal.abort())).rejects.toThrow()
+  })
+})
+
+describe('desktop control grant', () => {
+  it('loads grants written before desktop control existed as ungranted', () => {
+    const file = join(root(), 'folders.enc')
+    const legacy = { ...grant() } as Partial<FolderGrant>
+    delete legacy.desktopControl
+    writeFileSync(file, secrets.encryptString(JSON.stringify([legacy])).toString('base64'))
+    const loaded = new FolderStore(file, secrets).list(TEST_SERVER, 2)
+    expect(loaded).toHaveLength(1)
+    expect(loaded[0]!.desktopControl).toBe(false)
+  })
+
+  it('announces the grant in its handshake and refuses desktop operations without it', async () => {
+    const { server, endpoint } = await wsFixture()
+    const row = { ...grant(), endpoint, desktopControl: false }
+    let socket!: WebSocket
+    const execute = vi.fn(async () => ({ ok: true }))
+    server.on('connection', peer => {
+      socket = peer
+      peer.once('message', raw => {
+        expect(JSON.parse(raw.toString())).toMatchObject({ type: 'resume', desktopControl: false })
+        peer.send(JSON.stringify({ type: 'ready', workspaceId: row.id, workspacePath: '/virtual/root' }))
+      })
+    })
+    const client = new FolderConnection(row, async () => undefined, execute, vi.fn(), () => {})
+    disposers.push(() => client.stop())
+    await client.connect()
+    for (const operation of ['screenshot', 'input']) {
+      const response = once(socket, 'message')
+      socket.send(JSON.stringify({ type: 'request', id: operation, operation, args: {} }))
+      expect(JSON.parse((await response)[0].toString())).toMatchObject({ ok: false, error: '此目录未开启桌面控制' })
+    }
+    // The refusal happens before the worker is asked to do anything.
+    expect(execute).not.toHaveBeenCalled()
+  })
+
+  it('carries the grant to the worker once the folder has it', async () => {
+    const { server, endpoint } = await wsFixture()
+    const row = { ...grant(), endpoint, desktopControl: true }
+    let socket!: WebSocket
+    const execute = vi.fn(async () => ({ cursor: { x: 1, y: 2 } }))
+    server.on('connection', peer => {
+      socket = peer
+      peer.once('message', raw => {
+        expect(JSON.parse(raw.toString())).toMatchObject({ desktopControl: true })
+        peer.send(JSON.stringify({ type: 'ready', workspaceId: row.id, workspacePath: '/virtual/root' }))
+      })
+    })
+    const client = new FolderConnection(row, async () => undefined, execute, vi.fn(), () => {})
+    disposers.push(() => client.stop())
+    await client.connect()
+    const response = once(socket, 'message')
+    socket.send(JSON.stringify({ type: 'request', id: '1', operation: 'input', args: { action: 'left_click' } }))
+    expect(JSON.parse((await response)[0].toString())).toMatchObject({ ok: true })
+    expect(execute).toHaveBeenCalledWith(row.root, 'input', { action: 'left_click' }, expect.anything(), true)
+  })
+
+  it('refuses a desktop operation the companion was not granted', async () => {
+    const folder = root()
+    const signal = new AbortController().signal
+    for (const operation of ['screenshot', 'input'] as const) {
+      // Shell being on is deliberately not enough; the grants are separate.
+      await expect(executeOperation(config(folder), operation, { action: 'left_click' }, signal))
+        .rejects.toMatchObject({ code: 'DESKTOP_CONTROL_DISABLED' })
+    }
   })
 })
