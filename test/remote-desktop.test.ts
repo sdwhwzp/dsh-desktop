@@ -72,6 +72,44 @@ describe('saved local folder grants', () => {
 })
 
 describe('companion connection', () => {
+  it('retries a saved folder after the initial account check fails', async () => {
+    const { server, endpoint } = await wsFixture()
+    const row = { ...grant(), endpoint }
+    server.on('connection', peer => peer.once('message', () => {
+      peer.send(JSON.stringify({ type: 'ready', workspaceId: row.id }))
+    }))
+    const authorize = vi.fn(async () => undefined).mockRejectedValueOnce(new Error('temporary network failure'))
+    const client = new FolderConnection(row, authorize, vi.fn(), () => {}, () => {})
+    disposers.push(() => client.stop())
+    await expect(client.connect()).rejects.toThrow('temporary network failure')
+    await vi.waitFor(() => expect(client.snapshot()).toBe('已连接'), { timeout: 5000 })
+    expect(authorize).toHaveBeenCalledTimes(3)
+  }, 7000)
+  it('retries when account verification fails after the resume handshake', async () => {
+    const { server, endpoint } = await wsFixture()
+    const row = { ...grant(), endpoint }
+    server.on('connection', peer => peer.once('message', () => {
+      peer.send(JSON.stringify({ type: 'ready', workspaceId: row.id }))
+    }))
+    const authorize = vi.fn(async () => undefined)
+      .mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('temporary network failure'))
+    const client = new FolderConnection(row, authorize, vi.fn(), () => {}, () => {})
+    disposers.push(() => client.stop())
+    await expect(client.connect()).rejects.toThrow('temporary network failure')
+    await vi.waitFor(() => expect(client.snapshot()).toBe('已连接'), { timeout: 5000 })
+  }, 7000)
+  it('cancels an account-check retry when the folder is stopped', async () => {
+    vi.useFakeTimers()
+    try {
+      const authorize = vi.fn(async () => { throw new Error('temporary network failure') })
+      const client = new FolderConnection(grant(), authorize, vi.fn(), () => {}, () => {})
+      disposers.push(() => client.stop())
+      await expect(client.connect()).rejects.toThrow('temporary network failure')
+      client.stop()
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(authorize).toHaveBeenCalledTimes(1)
+    } finally { vi.useRealTimers() }
+  })
   it('pairs with shell enabled, authorizes each operation and cancels work on disconnect', async () => {
     const { server, endpoint } = await wsFixture()
     const row = { ...grant(), endpoint, token: '' }

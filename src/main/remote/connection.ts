@@ -44,7 +44,14 @@ export class FolderConnection {
 
   async connect(code?: string): Promise<void> {
     const generation = ++this.generation
-    await this.authorize()
+    clearTimeout(this.timer)
+    try { await this.authorize() } catch (error) {
+      if (!this.stopped && generation === this.generation) {
+        this.setStatus('账号验证失败，正在重试')
+        if (this.grant.token) this.retry()
+      }
+      throw error
+    }
     if (this.stopped || generation !== this.generation) throw new Error('目录连接已取消')
     this.setStatus('连接中')
     const socket = new WebSocket(this.grant.endpoint, { maxPayload: MAX_FRAME, handshakeTimeout: 10_000, followRedirects: false })
@@ -78,7 +85,13 @@ export class FolderConnection {
               this.grant.token = message.token
             }
             if (!this.grant.token) throw new Error('服务器未返回目录凭据')
-            await this.authorize()
+            try { await this.authorize() } catch (error) {
+              if (!alive()) return
+              this.setStatus('账号验证失败，正在重试')
+              reject(error)
+              socket.terminate()
+              return
+            }
             if (!alive()) return
             this.save(this.grant)
             authenticated = true
