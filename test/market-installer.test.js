@@ -281,6 +281,10 @@ describe('desktop plugin market installer', () => {
     // through rather than stripping it.
     expect(pnpmEnv.ELECTRON_RUN_AS_NODE).toBe('1')
     expect(pnpmEnv.npm_config_side_effects_cache).toBe('false')
+    // Upstream's Windows tuning rides along under the PNPM_CONFIG_* spelling;
+    // the lowercase npm_config_* twins stay unset so neither shadows the other.
+    expect(pnpmEnv.PNPM_CONFIG_CHILD_CONCURRENCY).toBe('1')
+    expect(pnpmEnv.PNPM_CONFIG_PACKAGE_IMPORT_METHOD).toBe('clone-or-copy')
     expect(pnpmEnv.npm_config_child_concurrency).toBeUndefined()
     expect(pnpmEnv.npm_config_package_import_method).toBeUndefined()
 

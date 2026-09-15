@@ -352,6 +352,10 @@ export function buildPnpmEnvironment(
   result.CI = 'true'
   result.NO_COLOR = '1'
   result.npm_config_side_effects_cache = 'false'
+  // Upstream's Windows tuning: serialize the child pnpm and copy instead of
+  // hardlinking, so a locked file in the store cannot fail the install.
+  result.PNPM_CONFIG_CHILD_CONCURRENCY = '1'
+  result.PNPM_CONFIG_PACKAGE_IMPORT_METHOD = 'clone-or-copy'
   result.PNPM_CONFIG_SIDE_EFFECTS_CACHE = 'false'
   return result
 }
