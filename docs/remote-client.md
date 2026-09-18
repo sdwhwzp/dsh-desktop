@@ -49,6 +49,8 @@ Electron 的应用数据目录 `tizhi-ai-desktop` 保存服务器设置、按服
 
 `dev` 的远程客户端代码变更会触发 `Remote desktop Windows installer` Actions 流程，使用 Windows x64 主机打包 NSIS 安装程序。流程静默安装到独立临时目录，再运行真实 Electron 客户端，验证登录、网页隔离、本机文件读写、Git 分支切换、终端超时及取消、账号切换与重启恢复；测试使用本机模拟服务器，不连接 30 或使用线上账号。
 
+远程安装程序与原作者桌面端共用 `build/installer.nsh`。其中的 `customInstall` 宏只对 `dsh-desktop` 包生效：远程客户端不写入 HKLM 长路径策略、不弹出 UAC 提权添加 Defender 排除、也不删除 `dsh-desktop` 的会话标记；它只有数百个文件，数据目录为 `tizhi-ai-desktop`。
+
 通过后的构件 `tizhi-ai-desktop-windows-x64` 包含安装程序、源码提交、SHA-256 与验证结果，保留 30 天。这是未签名的远程客户端构建；macOS 正式分发需要 Developer ID Application 证书和 Apple 公证，网站 HTTPS 证书不能用于应用签名。
 
 真实 Git 命令测试的等待上限为 20 秒，大于命令自身的 10 秒期限；测试结束时先取消并等待命令退出，再移除临时工作目录。清理钩子同样保留 20 秒，避免 Windows 上仍持有目录的进程与删除操作并行。

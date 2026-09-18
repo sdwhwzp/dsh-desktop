@@ -312,3 +312,13 @@ describe('desktop control grant', () => {
     }
   })
 })
+
+describe('remote installer', () => {
+  it('skips the dsh-desktop data-directory maintenance in the shared NSIS include', () => {
+    const installer = readFileSync(new URL('../build/installer.nsh', import.meta.url), 'utf8')
+    const body = (installer.match(/!macro customInstall\n([\s\S]*?)\n\s*!macroend/)?.[1] ?? '')
+      .split('\n').map(line => line.trim()).filter(line => line && !line.startsWith(';'))
+    expect(body[0]).toBe('!if "${APP_PACKAGE_NAME}" == "dsh-desktop"')
+    expect(body.at(-1)).toBe('!endif')
+  })
+})

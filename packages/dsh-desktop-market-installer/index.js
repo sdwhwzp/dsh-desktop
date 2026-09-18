@@ -510,6 +510,12 @@ export function createDesktopPnpmService(options) {
         // untouched, so anything that already loaded it is unaffected.
         await rm(marketPath, { force: true })
       }
+      const workspaceYamlPath = join(profile, 'pnpm-workspace.yaml')
+      try {
+        await readFile(workspaceYamlPath, 'utf8')
+      } catch {
+        await atomicWrite(workspaceYamlPath, 'packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n')
+      }
       const registry = await resolveMarketRegistry({ profileDir: profile, args, environment })
       if (isCancelled()) throw new Error('The package operation was aborted.')
       const env = buildPnpmEnvironment(binDirectory, environment, executablePath)
@@ -522,14 +528,27 @@ export function createDesktopPnpmService(options) {
           windowsHide: true, detached: process.platform !== 'win32'
         })
       setCancel(() => killProcessTree(child))
-      child.stdout?.on('data', chunk => write(chunk.toString('utf8').replace(/\r?\n$/u, '')))
-      child.stderr?.on('data', chunk => write(chunk.toString('utf8').replace(/\r?\n$/u, '')))
+      let failureOutput = ''
+      child.stdout?.on('data', chunk => {
+        const text = chunk.toString('utf8').replace(/\r?\n$/u, '')
+        failureOutput = `${failureOutput}\n${text}`.slice(-2000)
+        write(text)
+      })
+      child.stderr?.on('data', chunk => {
+        const text = chunk.toString('utf8').replace(/\r?\n$/u, '')
+        failureOutput = `${failureOutput}\n${text}`.slice(-2000)
+        write(text)
+      })
       const exit = await new Promise((resolveExit, rejectExit) => {
         child.once('error', rejectExit)
         child.once('close', (code, signal) => resolveExit({ code, signal }))
       })
       setCancel(() => {})
-      if (isCancelled() || exit.code !== 0) throw new Error(`Market install failed: ${exit.signal ?? exit.code}`)
+      if (isCancelled()) throw new Error('The package operation was aborted.')
+      if (exit.code !== 0) {
+        const detail = failureOutput.trim()
+        throw new Error(`Market install failed: ${exit.signal ?? exit.code}${detail ? ` (${detail})` : ''}`)
+      }
       const installed = JSON.parse(await readFile(join(profile, 'node_modules', MARKET_PACKAGE, 'package.json'), 'utf8'))
       const expected = spec.slice(spec.lastIndexOf('@') + 1)
       if (installed.version !== expected) throw new Error(`Market install expected ${expected}, found ${installed.version}`)
@@ -593,6 +612,12 @@ export function createDesktopPnpmService(options) {
           dshHome: home,
           pluginSpec: spec,
           expectedVersion: spec.slice(spec.lastIndexOf('@') + 1),
+          // Preserve the market's peer-fetch recovery policy across the
+          // Profile -> isolated generation boundary (including camelCase).
+          autoInstallPeers: args.reduce((value, arg) => {
+            const match = /^--config\.(?:autoInstallPeers|auto-install-peers)=(true|false)$/.exec(arg)
+            return match ? match[1] === 'true' : value
+          }, undefined),
           minimumReleaseAge: args.some(arg => /^--config\.(?:minimumReleaseAge|minimum-release-age)=0$/.test(arg)) ? 0 : 1440,
           nodeExecutablePath: executablePath,
           pnpmEntryPath,
