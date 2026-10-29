@@ -9,6 +9,12 @@ const template = join(dirname(require.resolve('app-builder-lib/package.json')), 
 const installUtil = join(dirname(require.resolve('app-builder-lib/package.json')), 'templates', 'nsis', 'include', 'installUtil.nsh')
 
 describe('pinned NSIS directory transaction', () => {
+  it('uses the directory-aware builder for remote Windows packages', async () => {
+    const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+    expect(packageJson.scripts['package:remote:win'])
+      .toContain('node scripts/electron-builder-windows.mjs')
+  })
+
   it('accepts Windows PE headers and rejects host binaries', () => {
     // Header validation is independent of the machine running the build.
     const pe = Buffer.alloc(0x48)

@@ -49,7 +49,7 @@
     "build:remote": "electron-vite build --mode remote",
     "package:remote:dir": "npm run prepare:tsnet && npm run build:remote && node scripts/prepare-remote-package.mjs && electron-builder --dir --config electron-builder.remote.cjs",
     "package:remote:mac:arm64": "node scripts/verify-target.mjs darwin arm64 --remote && npm run prepare:tsnet && npm run build:remote && node scripts/prepare-remote-package.mjs && electron-builder --mac --arm64 --publish never --config electron-builder.remote.cjs",
-    "package:remote:win": "node scripts/verify-target.mjs win32 x64 --remote && npm run prepare:tsnet && npm run build:remote && node scripts/prepare-remote-package.mjs && electron-builder --win --x64 --publish never --config electron-builder.remote.cjs",
+    "package:remote:win": "node scripts/verify-target.mjs win32 x64 --remote && npm run prepare:tsnet && npm run build:remote && node scripts/prepare-remote-package.mjs && node scripts/electron-builder-windows.mjs --win --x64 --publish never --config electron-builder.remote.cjs",
     "prepare:tsnet": "node scripts/prepare-tsnet.mjs"
   },
   "dependencies": {

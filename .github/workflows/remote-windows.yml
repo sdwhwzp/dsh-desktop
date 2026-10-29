@@ -14,6 +14,8 @@ on:
       - 'electron-builder.remote.cjs'
       - 'electron.vite.config.ts'
       - 'scripts/*remote*'
+      - 'scripts/electron-builder-windows.mjs'
+      - 'scripts/windows-directory-installer.mjs'
       - 'scripts/verify-target.mjs'
       - 'test/remote-desktop.test.ts'
       - 'test/*network*'
@@ -54,7 +56,7 @@ jobs:
           cache-dependency-path: tsnet/go.sum
       - run: npm ci
       - name: Verify remote desktop behavior
-        run: npx vitest run test/remote-desktop.test.ts test/tsnet.test.ts test/remote-network.test.ts
+        run: npx vitest run test/remote-desktop.test.ts test/tsnet.test.ts test/remote-network.test.ts test/windows-directory-installer.test.ts
       - run: npx tsc --noEmit -p tsconfig.remote.json
       - run: go test ./...
         working-directory: tsnet
