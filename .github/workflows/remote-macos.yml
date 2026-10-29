@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   macos:
-    runs-on: macos-14
+    runs-on: macos-15-intel
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -71,8 +71,10 @@ jobs:
         env:
           CSC_KEYCHAIN: ${{ steps.signing_keychain.outputs.keychain }}
         run: |
-          node scripts/verify-target.mjs darwin arm64 --remote
-          npm run prepare:tsnet
+          node scripts/verify-target.mjs darwin x64 --remote
+          DSH_DESKTOP_TARGET_PLATFORM=darwin \
+            DSH_DESKTOP_TARGET_ARCH=arm64 \
+            npm run prepare:tsnet
           npm run build:remote
           node scripts/prepare-remote-package.mjs
           npx --no-install electron-builder \
