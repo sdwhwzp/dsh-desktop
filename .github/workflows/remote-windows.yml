@@ -2,7 +2,7 @@ name: Remote desktop Windows packages
 
 on:
   push:
-    branches: [dev, 'fix/tsnet-persist-20261029']
+    branches: [dev]
     paths:
       - '.github/workflows/remote-windows.yml'
       - 'src/main/remote/**'
