@@ -8,9 +8,17 @@ import { dirname, join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { _electron } from 'playwright';
 import { WebSocketServer } from 'ws';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 
 const executablePath = resolve(process.argv[2] || '');
 assert.ok(process.argv[2], 'Pass the installed desktop executable path');
+const resources = process.platform === 'darwin' ? resolve(dirname(executablePath), '../Resources') : resolve(dirname(executablePath), 'resources');
+const helperDirectory = resolve(resources, 'tsnet');
+const helperVersion = JSON.parse(await readFile(resolve(helperDirectory, 'version.json'), 'utf8'));
+const helper = await promisify(execFile)(resolve(helperDirectory, process.platform === 'win32' ? 'dsh-tsnet.exe' : 'dsh-tsnet'), ['--version'], { windowsHide: true, timeout: 10_000 });
+assert.equal(helperVersion.protocolVersion, 1);
+assert.equal(helper.stdout.trim(), `dsh-tsnet protocol=1 tailscale=${helperVersion.tailscaleVersion}`);
 const reportPath = process.argv[3] && resolve(process.argv[3]);
 const root = await realpath(await mkdtemp(join(tmpdir(), 'tizhi-package-smoke-')));
 const profile = join(root, 'profile');

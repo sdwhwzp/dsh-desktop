@@ -1,6 +1,6 @@
 {
   "name": "dsh-desktop",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "A cross-platform desktop shell for DeepSeek Harness.",
   "private": true,
   "type": "module",
@@ -44,9 +44,10 @@
     "ppt:build": "node scripts/generate-zara-ppt-templates.mjs && node scripts/localize-ppt-templates.mjs && node scripts/enrich-ppt-templates.mjs && node scripts/build-ppt-runtime.mjs",
     "dev:remote": "npm run build:remote && electron .",
     "build:remote": "electron-vite build --mode remote",
-    "package:remote:dir": "npm run build:remote && node scripts/prepare-remote-package.mjs && electron-builder --dir --config electron-builder.remote.cjs",
-    "package:remote:mac:arm64": "node scripts/verify-target.mjs darwin arm64 && npm run build:remote && node scripts/prepare-remote-package.mjs && electron-builder --mac --arm64 --publish never --config electron-builder.remote.cjs",
-    "package:remote:win": "node scripts/verify-target.mjs win32 x64 && npm run build:remote && node scripts/prepare-remote-package.mjs && electron-builder --win --x64 --publish never --config electron-builder.remote.cjs"
+    "package:remote:dir": "npm run prepare:tsnet && npm run build:remote && node scripts/prepare-remote-package.mjs && electron-builder --dir --config electron-builder.remote.cjs",
+    "package:remote:mac:arm64": "node scripts/verify-target.mjs darwin arm64 --remote && npm run prepare:tsnet && npm run build:remote && node scripts/prepare-remote-package.mjs && electron-builder --mac --arm64 --publish never --config electron-builder.remote.cjs",
+    "package:remote:win": "node scripts/verify-target.mjs win32 x64 --remote && npm run prepare:tsnet && npm run build:remote && node scripts/prepare-remote-package.mjs && electron-builder --win --x64 --publish never --config electron-builder.remote.cjs",
+    "prepare:tsnet": "node scripts/prepare-tsnet.mjs"
   },
   "dependencies": {
     "@deepseek-ai/cordis": "4.0.2",
@@ -287,7 +288,8 @@
     "react-dom": "18.3.1",
     "ws": "^8.21.3",
     "dsh-ppt": "file:packages/ppt-bundles/dsh-ppt-0.1.1-rc.2-desktop-20260906.tgz",
-    "dsh-ppt-composer": "file:packages/ppt-bundles/dsh-ppt-composer-0.1.1-rc.2-desktop-20260906.tgz"
+    "dsh-ppt-composer": "file:packages/ppt-bundles/dsh-ppt-composer-0.1.1-rc.2-desktop-20260906.tgz",
+    "https-proxy-agent": "^7.0.6"
   },
   "devDependencies": {
     "@types/node": "24.10.1",

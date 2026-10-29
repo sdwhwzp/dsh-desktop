@@ -1,5 +1,5 @@
 import os from 'node:os'
-import WebSocket from 'ws'
+import WebSocket, { type ClientOptions } from 'ws'
 import type { FolderGrant } from './folder-store'
 import { record } from './gateway'
 
@@ -29,7 +29,8 @@ export class FolderConnection {
     private readonly authorize: () => Promise<void>,
     private readonly execute: ExecuteFile,
     private readonly save: (grant: FolderGrant) => void,
-    private readonly changed: () => void
+    private readonly changed: () => void,
+    private readonly networkOptions: Pick<ClientOptions, 'agent'> = {}
   ) {}
 
   snapshot(): string { return this.status }
@@ -54,7 +55,7 @@ export class FolderConnection {
     }
     if (this.stopped || generation !== this.generation) throw new Error('目录连接已取消')
     this.setStatus('连接中')
-    const socket = new WebSocket(this.grant.endpoint, { maxPayload: MAX_FRAME, handshakeTimeout: 10_000, followRedirects: false })
+    const socket = new WebSocket(this.grant.endpoint, { ...this.networkOptions, maxPayload: MAX_FRAME, handshakeTimeout: 10_000, followRedirects: false })
     this.socket = socket
     await new Promise<void>((resolve, reject) => {
       let authenticated = false

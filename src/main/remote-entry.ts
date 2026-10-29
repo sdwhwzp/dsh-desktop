@@ -7,6 +7,7 @@ import { Gateway, serverOrigin } from './remote/gateway'
 import { FolderStore } from './remote/folder-store'
 import { RemoteController } from './remote/controller'
 import { executeFile, waitForLocalOperations } from './remote/filesystem-process'
+import { RemoteNetwork } from './remote/network'
 
 app.setName('梯智 AI Desktop')
 app.setPath('userData', process.env.DSH_REMOTE_USER_DATA || join(app.getPath('appData'), 'tizhi-ai-desktop'))
@@ -17,6 +18,7 @@ let timer: NodeJS.Timeout | undefined
 let removeCookieListener: (() => void) | undefined
 let showingFolders = false
 let stopped = false
+const network = new RemoteNetwork()
 const shellFile = join(__dirname, '../remote/index.html')
 const shellUrl = pathToFileURL(shellFile).href
 
@@ -70,10 +72,12 @@ async function connect(target: string, companion = ''): Promise<void> {
   if (view) { window.contentView.removeChildView(view); view.webContents.close(); view = undefined }
   const partition = `persist:remote-${createHash('sha256').update(origin).digest('hex')}`
   const browserSession = session.fromPartition(partition)
+  await network.prepareSession(browserSession)
   browserSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
   browserSession.setPermissionCheckHandler(() => false)
   const store = new FolderStore(join(app.getPath('userData'), 'folders.enc'), safeStorage)
-  controller = new RemoteController(new Gateway(origin, browserSession.fetch.bind(browserSession) as typeof fetch, companion), store, executeFile, publish)
+  controller = new RemoteController(new Gateway(origin, browserSession.fetch.bind(browserSession) as typeof fetch, companion), store, executeFile, publish,
+    network.agent ? { agent: network.agent } : {})
   const current = controller
   const cookieChanged = (_event: unknown, cookie: Electron.Cookie) => {
     if (cookie.name !== 'dsh_gateway_token') return
@@ -134,12 +138,14 @@ async function bootstrap(): Promise<void> {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(process.platform === 'darwin' ? [{ label: '梯智 AI', submenu: [{ role: 'about' as const }, { role: 'quit' as const }] }] : []),
     { label: '编辑', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
+    { label: '内网', submenu: [{ label: '内网连接（Tailscale / Headscale）…', click: () => { void network.show() } }] },
     { label: '窗口', submenu: [{ label: '刷新服务器页面', accelerator: 'CmdOrCtrl+R', click: () => view?.webContents.reload() }, { role: 'togglefullscreen' }, { role: 'minimize' }] }
   ]))
   ipcMain.handle('remote:state', event => { trusted(event); return snapshot() })
   let busy = false
   ipcMain.handle('remote:action', async (event, action: unknown, value: unknown) => {
     trusted(event)
+    if (stopped) throw new Error('应用正在关闭')
     if (busy) throw new Error('请等待当前操作完成')
     busy = true
     try {
@@ -169,6 +175,12 @@ async function bootstrap(): Promise<void> {
     } finally { busy = false }
   })
   await window.loadFile(shellFile)
+  try { await network.start() } catch {
+    await network.show()
+    showingFolders = true
+    publish()
+    return
+  }
   let target = ''
   let companion = ''
   try {
@@ -193,7 +205,7 @@ else {
     clearInterval(timer)
     removeCookieListener?.()
     controller?.dispose()
-    void waitForLocalOperations().finally(() => { readyToQuit = true; app.quit() })
+    void Promise.allSettled([waitForLocalOperations(), network.close()]).then(() => { readyToQuit = true; app.quit() })
   })
   app.whenReady().then(bootstrap).catch(error => {
     dialog.showErrorBox('桌面端启动失败', error instanceof Error ? error.message : '未知错误')

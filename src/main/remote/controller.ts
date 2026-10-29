@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { realpath, stat } from 'node:fs/promises'
 import { basename } from 'node:path'
+import type { ClientOptions } from 'ws'
 import type { RemoteAccount, RemoteState } from '../../shared/remote'
 import { FolderConnection, type ExecuteFile } from './connection'
 import { FolderStore, type FolderGrant } from './folder-store'
@@ -15,7 +16,8 @@ export class RemoteController {
   private refreshing?: Promise<void>
   private disposed = false
   constructor(readonly gateway: Gateway, private readonly store: FolderStore,
-    private readonly execute: ExecuteFile, private readonly changed: () => void) {}
+    private readonly execute: ExecuteFile, private readonly changed: () => void,
+    private readonly networkOptions: Pick<ClientOptions, 'agent'> = {}) {}
 
   snapshot(): RemoteState {
     return { server: this.gateway.origin, companion: this.gateway.endpointOverride, account: this.account, error: this.error,
@@ -151,7 +153,7 @@ export class RemoteController {
     const epoch = this.epoch
     if (this.gateway.endpointOverride) grant.endpoint = this.gateway.endpointOverride
     const client = new FolderConnection(grant, () => this.authorize(grant.accountId, epoch), this.execute,
-      row => this.store.save(row), this.changed)
+      row => this.store.save(row), this.changed, this.networkOptions)
     this.connections.set(grant.id, client)
     const ready = client.connect(code)
     void ready.catch(error => { this.error = error instanceof Error ? error.message : '本机目录连接失败'; this.changed() })

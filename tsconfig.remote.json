@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "types": ["node", "electron-vite/node", "vitest/globals"], "noEmit": true },
+  "include": [
+    "electron.vite.config.ts", "src/main/remote-entry.ts", "src/main/remote/**/*.ts",
+    "src/preload/remote.ts", "src/shared/remote.ts", "test/remote-desktop.test.ts", "test/tsnet.test.ts", "test/remote-network.test.ts"
+  ]
+}

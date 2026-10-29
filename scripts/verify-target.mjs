@@ -17,6 +17,12 @@ if (process.platform !== expectedPlatform || process.arch !== expectedArch) {
   process.exit(1)
 }
 
+// Remote builds use Electron for file workers and do not distribute a standalone Node runtime.
+if (process.argv.includes('--remote')) {
+  console.log(`Remote packaging target verified: ${process.platform}/${process.arch}`)
+  process.exit(0)
+}
+
 const executable = expectedPlatform === 'win32' ? 'node.exe' : 'node'
 const bundledNode = resolve('node_modules', 'node', 'bin', executable)
 

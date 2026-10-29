@@ -18,6 +18,23 @@ Windows 和 Mac 桌面包默认启用本机 Shell，新配对和已有目录重�
 
 ## 开发与打包
 
+### 内置 Tailscale / Headscale
+
+0.1.6 的远程客户端内置官方 `tsnet`。从菜单 **内网 → 内网连接** 打开配置，在 `desktop/tailscale.json` 中填写控制服务器与域名映射，然后选择 **启用并重启**，再次打开菜单登录。默认关闭；用户电脑无需另装 Tailscale、系统服务、网卡驱动或 Go。Go 只用于构建。Headscale 使用自己的 HTTPS 控制地址；注册密钥可通过 `authKeyEnvironment` 指定环境变量，不写入配置或安装包。
+
+```json
+{
+  "enabled": false,
+  "hostname": "tizhi-desktop",
+  "controlURL": "https://your-headscale.example.com",
+  "routes": [{ "host": "gr.gr-iot.cn", "address": "100.64.0.6" }]
+}
+```
+
+服务器设置继续填写 `https://gr.gr-iot.cn:3081/`，目录地址填写 `wss://gr.gr-iot.cn:3082/`。网页、登录请求与目录 WebSocket 均走同一个进程内网节点；CONNECT 保留原域名、端口、路径、TLS SNI 和证书校验，不能用 IP 替换 HTTPS 域名。30 通过原有账号授权的 WSS 连接读写本机目录、执行终端及已授权的桌面操作。远程客户端不包含本地 Harness，30 上的 DSH 与内网服务仍在服务器运行；其已有内网接入独立于客户端。启动动画由服务器端的 `dsh-boot-animation` 提供。
+
+Windows 同一次构建输出每用户 NSIS 安装程序和解压即用 ZIP，功能、账号隔离、tsnet 与数据位置相同。安装程序提供快捷方式和卸载入口；ZIP 不写安装记录，数据仍保存在 `%APPDATA%/tizhi-ai-desktop`，不随 ZIP 自动迁移。两种包均不请求管理员权限，无签名构建使用手动更新。Mac 在本机打包 DMG 与 ZIP。原有本地 Harness 的打包命令保持原用途。
+
 ```sh
 npm ci
 npm run dev:remote

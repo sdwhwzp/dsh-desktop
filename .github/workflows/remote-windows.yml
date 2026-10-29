@@ -1,4 +1,4 @@
-name: Remote desktop Windows installer
+name: Remote desktop Windows packages
 
 on:
   push:
@@ -16,6 +16,12 @@ on:
       - 'scripts/*remote*'
       - 'scripts/verify-target.mjs'
       - 'test/remote-desktop.test.ts'
+      - 'test/*network*'
+      - 'test/tsnet*'
+      - 'test/fixtures/tsnet*'
+      - 'tsnet/**'
+      - 'scripts/prepare-tsnet.mjs'
+      - 'tsconfig.remote.json'
       - 'package*.json'
       - 'build/app-icon.png'
       - 'build/icon.icns'
@@ -42,9 +48,15 @@ jobs:
         with:
           node-version: '22.21.1'
           cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tsnet/go.mod
+          cache-dependency-path: tsnet/go.sum
       - run: npm ci
-      - run: npm test -- test/remote-desktop.test.ts
-      - run: npm run typecheck
+      - run: npm test -- test/remote-desktop.test.ts test/tsnet.test.ts test/remote-network.test.ts
+      - run: npx tsc --noEmit -p tsconfig.remote.json
+      - run: go test ./...
+        working-directory: tsnet
       - run: npm run package:remote:win
       - name: Install and verify the native Windows client
         shell: pwsh
@@ -59,6 +71,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Installed client smoke failed' }
           $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $($installer.Name)" | Set-Content -Encoding ascii dist/remote/SHA256SUMS
+          $portable = Get-Item 'dist/remote/tizhi-ai-desktop-win-x64.zip'
+          $portableDir = Join-Path $env:RUNNER_TEMP 'tizhi-remote-portable'
+          Expand-Archive $portable.FullName $portableDir
+          node scripts/remote-package-smoke.mjs (Join-Path $portableDir 'Tizhi AI Desktop.exe') dist/remote/portable-verification.json
+          if ($LASTEXITCODE -ne 0) { throw 'Portable client smoke failed' }
+          $hash = (Get-FileHash $portable.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($portable.Name)" | Add-Content -Encoding ascii dist/remote/SHA256SUMS
           "${{ github.sha }}" | Set-Content -Encoding ascii dist/remote/COMMIT
       - uses: actions/upload-artifact@v4
         with:
@@ -67,9 +86,11 @@ jobs:
           retention-days: 30
           path: |
             dist/remote/tizhi-ai-desktop-win-x64.exe
+            dist/remote/tizhi-ai-desktop-win-x64.zip
             dist/remote/SHA256SUMS
             dist/remote/COMMIT
             dist/remote/windows-verification.json
+            dist/remote/portable-verification.json
       - name: Clean installed test client
         if: always()
         shell: pwsh
