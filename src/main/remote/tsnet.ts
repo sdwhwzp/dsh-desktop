@@ -42,10 +42,16 @@ function tailnetAddress(value: string): boolean {
   return isIP(value) === 6 && /^fd7a:115c:a1e0:/iu.test(value)
 }
 
+async function writeConfigAtomically(path: string, value: Record<string, unknown>): Promise<void> {
+  const temporary = `${path}.${process.pid}.tmp`
+  await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 })
+  await rename(temporary, path)
+}
+
 /**
  * Read network configuration; absent configuration uses the built-in Tizhi private network without creating files.
  * @param userData Electron user-data directory.
- * @returns Validated choices. Malformed existing settings reject without replacing them.
+ * @returns Validated choices. Untouched legacy defaults are atomically migrated; malformed settings reject unchanged.
  */
 export async function readDesktopTsnetConfig(userData: string): Promise<DesktopTsnetConfig> {
   const defaults: DesktopTsnetConfig = {
@@ -53,8 +59,9 @@ export async function readDesktopTsnetConfig(userData: string): Promise<DesktopT
     hostname: `tizhi-${hostname().toLowerCase().replace(/[^a-z0-9-]/gu, '-').slice(0, 56)}`.replace(/-+$/u, ''),
     controlURL: TIZHI_CONTROL_URL, routes: TIZHI_ROUTES,
   }
+  const path = join(userData, 'desktop', 'tailscale.json')
   let raw: string
-  try { raw = await readFile(join(userData, 'desktop', 'tailscale.json'), 'utf8') }
+  try { raw = await readFile(path, 'utf8') }
   catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return defaults; throw error }
   const value: unknown = JSON.parse(raw)
   if (!record(value)) throw new Error('tailscale.json must contain an object')
@@ -89,6 +96,10 @@ export async function readDesktopTsnetConfig(userData: string): Promise<DesktopT
     || authKey.length > 4096 || /\s/u.test(authKey))) throw new Error('Invalid Tailscale authentication key')
   const usesLegacyDefaults = url.href === LEGACY_CONTROL_URL && routes.length === 0
     && authKey === undefined && authKeyEnvironment === undefined
+  if (usesLegacyDefaults) {
+    await writeConfigAtomically(path, { ...value, enabled: true,
+      controlURL: defaults.controlURL, routes: defaults.routes })
+  }
   return { enabled: usesLegacyDefaults ? true : enabled, hostname: name,
     controlURL: usesLegacyDefaults ? defaults.controlURL : url.href,
     routes: usesLegacyDefaults ? defaults.routes : routes,
@@ -110,9 +121,7 @@ export async function writeDesktopTsnetEnabled(userData: string, enabled: boolea
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
   if (!record(existing)) throw new Error('Invalid Tailscale settings')
   await mkdir(directory, { recursive: true, mode: 0o700 })
-  const temporary = `${path}.${process.pid}.tmp`
-  await writeFile(temporary, `${JSON.stringify({ ...current, ...existing, enabled }, null, 2)}\n`, { mode: 0o600 })
-  await rename(temporary, path)
+  await writeConfigAtomically(path, { ...existing, ...current, enabled })
 }
 
 function helperEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {

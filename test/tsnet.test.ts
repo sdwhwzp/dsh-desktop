@@ -31,11 +31,26 @@ it('preconfigures the Tizhi private network and preserves custom Headscale route
   expect(JSON.parse(await readFile(path, 'utf8'))).toHaveProperty('custom', 'retained')
 })
 
-it('migrates only untouched legacy defaults to the embedded Tizhi network', async () => {
+it('atomically migrates untouched legacy defaults to the embedded Tizhi network', async () => {
+  const { root, path } = await fixture()
+  await writeFile(path, JSON.stringify({ enabled: false, hostname: 'tizhi-pc',
+    controlURL: 'https://controlplane.tailscale.com', routes: [], custom: 'retained' }))
+  expect(await readDesktopTsnetConfig(root)).toMatchObject({ enabled: true, hostname: 'tizhi-pc',
+    controlURL: 'https://gr.gr-iot.cn:18443/', routes: [{ host: 'gr.gr-iot.cn', address: '100.64.0.6' }] })
+  expect(JSON.parse(await readFile(path, 'utf8'))).toEqual({ enabled: true, hostname: 'tizhi-pc',
+    controlURL: 'https://gr.gr-iot.cn:18443/', routes: [{ host: 'gr.gr-iot.cn', address: '100.64.0.6' }],
+    custom: 'retained' })
+})
+
+it('keeps the migrated Tizhi network through an explicit disable and enable', async () => {
   const { root, path } = await fixture()
   await writeFile(path, JSON.stringify({ enabled: false, hostname: 'tizhi-pc',
     controlURL: 'https://controlplane.tailscale.com', routes: [] }))
-  expect(await readDesktopTsnetConfig(root)).toMatchObject({ enabled: true, hostname: 'tizhi-pc',
+  await writeDesktopTsnetEnabled(root, false)
+  expect(JSON.parse(await readFile(path, 'utf8'))).toMatchObject({ enabled: false,
+    controlURL: 'https://gr.gr-iot.cn:18443/', routes: [{ host: 'gr.gr-iot.cn', address: '100.64.0.6' }] })
+  await writeDesktopTsnetEnabled(root, true)
+  expect(JSON.parse(await readFile(path, 'utf8'))).toMatchObject({ enabled: true,
     controlURL: 'https://gr.gr-iot.cn:18443/', routes: [{ host: 'gr.gr-iot.cn', address: '100.64.0.6' }] })
 })
 
