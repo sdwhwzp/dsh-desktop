@@ -21,6 +21,7 @@ export interface DesktopTsnetConfig {
 
 const TIZHI_CONTROL_URL = 'https://gr.gr-iot.cn:18443/'
 const TIZHI_ROUTES: readonly DesktopTsnetRoute[] = [Object.freeze({ host: 'gr.gr-iot.cn', address: '100.64.0.6' })]
+const LEGACY_CONTROL_URL = 'https://controlplane.tailscale.com/'
 
 /** User-visible state of the independently owned private-network process. */
 export type DesktopTsnetState =
@@ -86,7 +87,11 @@ export async function readDesktopTsnetConfig(userData: string): Promise<DesktopT
   const authKey = value.authKey
   if (authKey !== undefined && (typeof authKey !== 'string' || authKey.length === 0
     || authKey.length > 4096 || /\s/u.test(authKey))) throw new Error('Invalid Tailscale authentication key')
-  return { enabled, hostname: name, controlURL: url.href, routes,
+  const usesLegacyDefaults = url.href === LEGACY_CONTROL_URL && routes.length === 0
+    && authKey === undefined && authKeyEnvironment === undefined
+  return { enabled: usesLegacyDefaults ? true : enabled, hostname: name,
+    controlURL: usesLegacyDefaults ? defaults.controlURL : url.href,
+    routes: usesLegacyDefaults ? defaults.routes : routes,
     ...(authKey === undefined ? {} : { authKey }),
     ...(authKeyEnvironment === undefined ? {} : { authKeyEnvironment }) }
 }
