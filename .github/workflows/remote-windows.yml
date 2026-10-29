@@ -69,6 +69,13 @@ jobs:
             Add-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Value '```text'
             Get-Content -Path $log -Tail 160 | Add-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding utf8
             Add-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Value '```'
+            Get-Content -Path $log -Tail 20 |
+              Where-Object { $_.Trim() } |
+              Select-Object -Last 8 |
+              ForEach-Object {
+                $message = $_.Replace('%', '%25').Replace('`r', '').Replace('`n', '')
+                Write-Output "::error title=Windows package log::$message"
+              }
             exit $exitCode
           }
       - name: Install and verify the native Windows client
