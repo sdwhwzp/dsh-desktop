@@ -4,7 +4,14 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { HttpsProxyAgent } from 'https-proxy-agent'
-import { DesktopTsnet, readDesktopTsnetConfig, writeDesktopTsnetEnabled, type DesktopTsnetConfig } from './tsnet'
+import type { RemoteNetworkSettings } from '../../shared/remote'
+import {
+  DesktopTsnet,
+  readDesktopTsnetConfig,
+  writeDesktopTsnetAuthKey,
+  writeDesktopTsnetEnabled,
+  type DesktopTsnetConfig,
+} from './tsnet'
 
 async function openTextFile(path: string): Promise<void> {
   if (process.platform === 'win32') {
@@ -28,6 +35,22 @@ export class RemoteNetwork {
   private startup?: Promise<void>
   private closed = false
   agent?: HttpsProxyAgent<string>
+
+  settings(): RemoteNetworkSettings {
+    return {
+      enabled: this.config?.enabled ?? false,
+      hasAuthKey: this.config?.authKey !== undefined || this.config?.authKeyEnvironment !== undefined,
+      hostname: this.config?.hostname ?? '',
+      controlURL: this.config?.controlURL ?? '',
+      error: this.failure ?? null,
+    }
+  }
+
+  async saveAuthKey(authKey: string): Promise<void> {
+    await writeDesktopTsnetAuthKey(app.getPath('userData'), authKey)
+    this.config = await readDesktopTsnetConfig(app.getPath('userData'))
+    this.failure = undefined
+  }
 
   start(): Promise<void> {
     if (this.closed) return Promise.reject(new Error('内网连接已关闭，请重启应用'))
@@ -57,7 +80,7 @@ export class RemoteNetwork {
       proxyBypassRules: 'localhost;127.0.0.1;[::1]' })
   }
 
-  async show(): Promise<void> {
+  async show(configure?: () => void): Promise<void> {
     if (this.dialogOpen) return
     this.dialogOpen = true
     try {
@@ -74,6 +97,9 @@ export class RemoteNetwork {
       } else if (state?.phase === 'needs-approval') message = '等待管理员批准此设备'
       else if (state?.phase === 'connecting') message = '正在连接内网'
       else if (state?.phase === 'error') { message = '内网连接失败'; detail = '请检查网络配置，然后重启应用。' }
+      if (configure !== undefined) {
+        actions.push({ label: '填写内网密钥', run: async () => configure() })
+      }
       actions.push({ label: '打开网络配置', run: async () => {
         const path = join(app.getPath('userData'), 'desktop/tailscale.json')
         if (!existsSync(path)) await writeDesktopTsnetEnabled(app.getPath('userData'), this.config?.enabled ?? false)

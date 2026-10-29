@@ -19,6 +19,19 @@
       <form id="server-form"><label for="server">服务器地址</label><div class="input-row"><input id="server" type="url" required value="https://gr.gr-iot.cn:3081/" spellcheck="false" /><button type="submit">连接服务器</button></div><label for="companion" class="companion-label">目录连接地址（留空使用服务器配置）</label><div class="input-row"><input id="companion" type="url" value="wss://gr.gr-iot.cn:3082/" spellcheck="false" /></div></form>
       <div class="account-row"><span id="account">未登录</span><button id="logout" disabled>退出账号</button></div>
     </section>
+    <section class="network-card" aria-label="内网连接设置">
+      <div class="network-title"><div><p class="eyebrow">Tailscale / Headscale</p><h2>内网连接</h2></div><span id="network-status">正在读取配置…</span></div>
+      <p class="network-help">粘贴管理员提供的预授权密钥（通常以 <code>tskey-auth-</code> 开头）。密钥只保存在本机，保存后需要重启应用才能生效。</p>
+      <form id="network-form">
+        <label for="network-auth-key">内网预授权密钥</label>
+        <div class="input-row">
+          <input id="network-auth-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="tskey-auth-…" />
+          <button id="network-key-reveal" type="button">显示</button>
+          <button class="primary" id="network-save" type="submit">保存密钥</button>
+        </div>
+      </form>
+      <div class="network-actions"><button id="network-restart" type="button">重启并连接</button><span>重启后显示“内网已连接”即完成；显示“等待管理员批准”时需在 Headscale 后台批准设备。</span></div>
+    </section>
     <p id="notice" role="status" aria-live="polite">正在连接服务器…</p>
     <section id="folders" aria-label="已授权目录列表"></section>
     <p class="footnote">断开或移除接入不会删除本机文件。退出账号、关闭桌面端会停止本机目录连接，服务器上的运行服务继续保留。网页端仍可独立使用。</p>

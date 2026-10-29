@@ -9,10 +9,21 @@ export interface RemoteFolder {
   desktopControl: boolean
   status: string
 }
-export interface RemoteState {
+/** Sanitized private-network settings; authentication keys never cross into the renderer. */
+export interface RemoteNetworkSettings {
+  enabled: boolean
+  hasAuthKey: boolean
+  hostname: string
+  controlURL: string
+  error: string | null
+}
+export interface RemoteControllerState {
   server: string
   companion: string
   account: RemoteAccount | null
   folders: RemoteFolder[]
   error: string | null
+}
+export interface RemoteState extends RemoteControllerState {
+  network: RemoteNetworkSettings
 }

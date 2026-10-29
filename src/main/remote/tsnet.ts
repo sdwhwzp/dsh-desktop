@@ -124,6 +124,28 @@ export async function writeDesktopTsnetEnabled(userData: string, enabled: boolea
   await writeConfigAtomically(path, { ...existing, ...current, enabled })
 }
 
+/**
+ * Store an inline pre-authentication key entered by the user and enable the private network.
+ * The key is written with owner-only permissions and is never returned to the renderer.
+ * @param userData Electron user-data directory.
+ * @param authKey Tailscale/Headscale pre-authentication key.
+ */
+export async function writeDesktopTsnetAuthKey(userData: string, authKey: string): Promise<void> {
+  const normalized = authKey.trim()
+  if (normalized.length === 0 || normalized.length > 4096 || /\s/u.test(normalized)) {
+    throw new Error('请输入有效的内网密钥（不能为空或包含空白字符）')
+  }
+  const current = await readDesktopTsnetConfig(userData)
+  const directory = join(userData, 'desktop')
+  const path = join(directory, 'tailscale.json')
+  let existing: unknown = {}
+  try { existing = JSON.parse(await readFile(path, 'utf8')) }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+  if (!record(existing)) throw new Error('Invalid Tailscale settings')
+  await mkdir(directory, { recursive: true, mode: 0o700 })
+  await writeConfigAtomically(path, { ...existing, ...current, authKey: normalized, enabled: true })
+}
+
 function helperEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const system = /^(?:PATH|SystemRoot|WINDIR|COMSPEC|PATHEXT|USERPROFILE|LOCALAPPDATA|APPDATA|TEMP|TMP|HOME|LANG)$/iu
   const network = /^(?:https?_proxy|all_proxy|no_proxy|SSL_CERT_FILE|SSL_CERT_DIR)$/iu

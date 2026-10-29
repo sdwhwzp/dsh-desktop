@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { realpath, stat } from 'node:fs/promises'
 import { basename } from 'node:path'
 import type { ClientOptions } from 'ws'
-import type { RemoteAccount, RemoteState } from '../../shared/remote'
+import type { RemoteAccount, RemoteControllerState } from '../../shared/remote'
 import { FolderConnection, type ExecuteFile } from './connection'
 import { FolderStore, type FolderGrant } from './folder-store'
 import { Gateway } from './gateway'
@@ -19,7 +19,7 @@ export class RemoteController {
     private readonly execute: ExecuteFile, private readonly changed: () => void,
     private readonly networkOptions: Pick<ClientOptions, 'agent'> = {}) {}
 
-  snapshot(): RemoteState {
+  snapshot(): RemoteControllerState {
     return { server: this.gateway.origin, companion: this.gateway.endpointOverride, account: this.account, error: this.error,
       folders: this.account ? this.store.list(this.gateway.origin, this.account.id).map(grant => ({
         id: grant.id, root: grant.root, name: grant.name, enabled: grant.enabled,

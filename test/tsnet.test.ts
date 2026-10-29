@@ -1,10 +1,16 @@
 /** Configuration preservation and real child-process protocol without enrolling a network node. */
 
-import { mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it, onTestFinished, vi } from 'vitest'
-import { DesktopTsnet, desktopTsnetEnvironment, readDesktopTsnetConfig, writeDesktopTsnetEnabled } from '../src/main/remote/tsnet'
+import {
+  DesktopTsnet,
+  desktopTsnetEnvironment,
+  readDesktopTsnetConfig,
+  writeDesktopTsnetAuthKey,
+  writeDesktopTsnetEnabled,
+} from '../src/main/remote/tsnet'
 import type { DesktopTsnetConfig, DesktopTsnetState } from '../src/main/remote/tsnet'
 
 async function fixture() {
@@ -52,6 +58,21 @@ it('keeps the migrated Tizhi network through an explicit disable and enable', as
   await writeDesktopTsnetEnabled(root, true)
   expect(JSON.parse(await readFile(path, 'utf8'))).toMatchObject({ enabled: true,
     controlURL: 'https://gr.gr-iot.cn:18443/', routes: [{ host: 'gr.gr-iot.cn', address: '100.64.0.6' }] })
+})
+
+it('stores an entered authentication key with owner-only permissions and preserves custom fields', async () => {
+  const { root, path } = await fixture()
+  await writeFile(path, JSON.stringify({ custom: 'retained', controlURL: 'https://headscale.example.com',
+    routes: [{ host: 'gr.gr-iot.cn', address: '100.64.0.6' }] }))
+  await writeDesktopTsnetAuthKey(root, '  tskey-auth-fixture  ')
+  expect(await readDesktopTsnetConfig(root)).toMatchObject({ enabled: true, authKey: 'tskey-auth-fixture',
+    controlURL: 'https://headscale.example.com/', routes: [{ host: 'gr.gr-iot.cn', address: '100.64.0.6' }] })
+  expect(JSON.parse(await readFile(path, 'utf8'))).toMatchObject({ authKey: 'tskey-auth-fixture', custom: 'retained' })
+  if (process.platform !== 'win32') expect((await stat(path)).mode & 0o777).toBe(0o600)
+
+  const before = await readFile(path, 'utf8')
+  await expect(writeDesktopTsnetAuthKey(root, 'invalid key')).rejects.toThrow('有效的内网密钥')
+  expect(await readFile(path, 'utf8')).toBe(before)
 })
 
 it.each([

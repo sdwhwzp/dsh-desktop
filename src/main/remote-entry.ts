@@ -51,7 +51,10 @@ async function confirmDesktopControl(): Promise<boolean> {
 }
 
 function snapshot() {
-  return controller?.snapshot() ?? { server: '', companion: '', account: null, folders: [], error: null }
+  return {
+    ...(controller?.snapshot() ?? { server: '', companion: '', account: null, folders: [], error: null }),
+    network: network.settings(),
+  }
 }
 function publish(): void {
   if (!stopped && window && !window.isDestroyed()) window.webContents.send('remote:changed', snapshot())
@@ -61,6 +64,13 @@ function layout(): void {
   const [width = 1000, height = 700] = window.getContentSize()
   view.setBounds({ x: 0, y: 64, width, height: Math.max(0, height - 64) })
   view.setVisible(!showingFolders)
+}
+function focusNetworkSettings(): void {
+  showingFolders = true
+  layout()
+  window.show()
+  window.focus()
+  window.webContents.send('remote:focus-network')
 }
 function external(url: string): void {
   if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
@@ -140,7 +150,7 @@ async function bootstrap(): Promise<void> {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(process.platform === 'darwin' ? [{ label: '梯智 AI', submenu: [{ role: 'about' as const }, { role: 'quit' as const }] }] : []),
     { label: '编辑', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
-    { label: '内网', submenu: [{ label: '内网连接（Tailscale / Headscale）…', click: () => { void network.show() } }] },
+    { label: '内网', submenu: [{ label: '内网连接（Tailscale / Headscale）…', click: () => { void network.show(focusNetworkSettings) } }] },
     { label: '窗口', submenu: [{ label: '刷新服务器页面', accelerator: 'CmdOrCtrl+R', click: () => view?.webContents.reload() }, { role: 'togglefullscreen' }, { role: 'minimize' }] }
   ]))
   ipcMain.handle('remote:state', event => { trusted(event); return snapshot() })
@@ -156,6 +166,12 @@ async function bootstrap(): Promise<void> {
         showingFolders = action === 'folders'
         layout()
       } else if (action === 'reload') view?.webContents.reload()
+      else if (action === 'network-save' && typeof value === 'string') {
+        await network.saveAuthKey(value)
+        publish()
+      } else if (action === 'network-restart') {
+        setTimeout(() => { app.relaunch(); app.quit() }, 250)
+      }
       else if (action === 'add') await controller?.add(async () => {
         const result = await dialog.showOpenDialog(window, { title: '选择当前账号的本机工作区（含终端操作）', properties: ['openDirectory'] })
         return result.canceled ? null : result.filePaths[0] ?? null
@@ -178,9 +194,9 @@ async function bootstrap(): Promise<void> {
   })
   await window.loadFile(shellFile)
   try { await network.start() } catch {
-    await network.show()
     showingFolders = true
     publish()
+    await network.show(focusNetworkSettings)
     return
   }
   let target = serverOrigin(DEFAULT_SERVER)
