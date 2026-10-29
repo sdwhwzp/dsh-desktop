@@ -58,7 +58,19 @@ jobs:
       - run: npx tsc --noEmit -p tsconfig.remote.json
       - run: go test ./...
         working-directory: tsnet
-      - run: npm run package:remote:win
+      - name: Build Windows packages
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP 'remote-windows-package.log'
+          npm run package:remote:win 2>&1 | Tee-Object -FilePath $log
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) {
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Value '## Windows package build failed'
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Value '```text'
+            Get-Content -Path $log -Tail 160 | Add-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding utf8
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Value '```'
+            exit $exitCode
+          }
       - name: Install and verify the native Windows client
         shell: pwsh
         run: |
