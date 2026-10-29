@@ -20,14 +20,15 @@ Windows 和 Mac 桌面包默认启用本机 Shell，新配对和已有目录重�
 
 ### 内置 Tailscale / Headscale
 
-0.1.6 的远程客户端内置官方 `tsnet`。从菜单 **内网 → 内网连接** 打开配置，在 `desktop/tailscale.json` 中填写控制服务器与域名映射，然后选择 **启用并重启**，再次打开菜单登录。默认关闭；用户电脑无需另装 Tailscale、系统服务、网卡驱动或 Go。Go 只用于构建。Headscale 使用自己的 HTTPS 控制地址；注册密钥可通过 `authKeyEnvironment` 指定环境变量，不写入配置或安装包。
+0.1.6 的远程客户端内置官方 `tsnet`。本定制包预置 `https://gr.gr-iot.cn:18443` 控制服务器、`gr.gr-iot.cn` 到 `100.64.0.6` 的内网路由，以及 `3081/3082` 远程服务地址，首次启动即可使用。用户电脑无需另装 Tailscale、系统服务、网卡驱动或 Go；Go 只用于构建。注册密钥可在 `desktop/tailscale.json` 中通过 `authKey` 直接提供，也可用 `authKeyEnvironment` 指定环境变量。
 
 ```json
 {
-  "enabled": false,
+  "enabled": true,
   "hostname": "tizhi-desktop",
-  "controlURL": "https://your-headscale.example.com",
-  "routes": [{ "host": "gr.gr-iot.cn", "address": "100.64.0.6" }]
+  "controlURL": "https://gr.gr-iot.cn:18443",
+  "routes": [{ "host": "gr.gr-iot.cn", "address": "100.64.0.6" }],
+  "authKey": "<Headscale预认证密钥>"
 }
 ```
 

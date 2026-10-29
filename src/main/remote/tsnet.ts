@@ -9,14 +9,18 @@ import { join } from 'node:path'
 /** Domain-to-tailnet-IP mapping; HTTPS retains the original hostname and certificate validation. */
 export interface DesktopTsnetRoute { readonly host: string; readonly address: string }
 
-/** Persisted network choices; authentication keys remain in the named environment variable. */
+/** Persisted network choices; authentication can use an inline key or a named environment variable. */
 export interface DesktopTsnetConfig {
   readonly enabled: boolean
   readonly hostname: string
   readonly controlURL: string
   readonly routes: readonly DesktopTsnetRoute[]
+  readonly authKey?: string
   readonly authKeyEnvironment?: string
 }
+
+const TIZHI_CONTROL_URL = 'https://gr.gr-iot.cn:18443/'
+const TIZHI_ROUTES: readonly DesktopTsnetRoute[] = [Object.freeze({ host: 'gr.gr-iot.cn', address: '100.64.0.6' })]
 
 /** User-visible state of the independently owned private-network process. */
 export type DesktopTsnetState =
@@ -38,15 +42,15 @@ function tailnetAddress(value: string): boolean {
 }
 
 /**
- * Read optional network configuration; absent configuration disables networking without creating files.
+ * Read network configuration; absent configuration uses the built-in Tizhi private network without creating files.
  * @param userData Electron user-data directory.
  * @returns Validated choices. Malformed existing settings reject without replacing them.
  */
 export async function readDesktopTsnetConfig(userData: string): Promise<DesktopTsnetConfig> {
   const defaults: DesktopTsnetConfig = {
-    enabled: false,
-    hostname: `dsh-${hostname().toLowerCase().replace(/[^a-z0-9-]/gu, '-').slice(0, 58)}`.replace(/-+$/u, ''),
-    controlURL: 'https://controlplane.tailscale.com', routes: [],
+    enabled: true,
+    hostname: `tizhi-${hostname().toLowerCase().replace(/[^a-z0-9-]/gu, '-').slice(0, 56)}`.replace(/-+$/u, ''),
+    controlURL: TIZHI_CONTROL_URL, routes: TIZHI_ROUTES,
   }
   let raw: string
   try { raw = await readFile(join(userData, 'desktop', 'tailscale.json'), 'utf8') }
@@ -79,7 +83,11 @@ export async function readDesktopTsnetConfig(userData: string): Promise<DesktopT
   if (authKeyEnvironment !== undefined && (typeof authKeyEnvironment !== 'string' || !/^[A-Z_][A-Z0-9_]*$/u.test(authKeyEnvironment))) {
     throw new Error('Invalid authentication-key environment-variable name')
   }
+  const authKey = value.authKey
+  if (authKey !== undefined && (typeof authKey !== 'string' || authKey.length === 0
+    || authKey.length > 4096 || /\s/u.test(authKey))) throw new Error('Invalid Tailscale authentication key')
   return { enabled, hostname: name, controlURL: url.href, routes,
+    ...(authKey === undefined ? {} : { authKey }),
     ...(authKeyEnvironment === undefined ? {} : { authKeyEnvironment }) }
 }
 
@@ -162,7 +170,8 @@ export class DesktopTsnet {
 
   private launch(): Promise<string> {
     this.update({ phase: 'connecting' })
-    const authKey = this.config.authKeyEnvironment === undefined ? '' : this.environment[this.config.authKeyEnvironment]
+    const authKey = this.config.authKey
+      ?? (this.config.authKeyEnvironment === undefined ? '' : this.environment[this.config.authKeyEnvironment])
     if (authKey === undefined) {
       this.update({ phase: 'error', code: 'authentication-key-unavailable' })
       return Promise.reject(new Error('Configured Tailscale authentication key is unavailable'))

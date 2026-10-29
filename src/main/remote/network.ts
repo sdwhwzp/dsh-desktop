@@ -1,9 +1,23 @@
 /** Private-network ownership shared by the remote page and the directory WebSocket. */
 import { app, clipboard, dialog, shell, type Session } from 'electron'
+import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { HttpsProxyAgent } from 'https-proxy-agent'
 import { DesktopTsnet, readDesktopTsnetConfig, writeDesktopTsnetEnabled, type DesktopTsnetConfig } from './tsnet'
+
+async function openTextFile(path: string): Promise<void> {
+  if (process.platform === 'win32') {
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn('notepad.exe', [path], { detached: true, stdio: 'ignore' })
+      child.once('error', reject)
+      child.once('spawn', () => { child.unref(); resolve() })
+    })
+    return
+  }
+  const error = await shell.openPath(path)
+  if (error) throw new Error(error)
+}
 
 export class RemoteNetwork {
   private client?: DesktopTsnet
@@ -63,11 +77,9 @@ export class RemoteNetwork {
       actions.push({ label: '打开网络配置', run: async () => {
         const path = join(app.getPath('userData'), 'desktop/tailscale.json')
         if (!existsSync(path)) await writeDesktopTsnetEnabled(app.getPath('userData'), this.config?.enabled ?? false)
-        const error = await shell.openPath(path)
-        if (error) throw new Error(error)
-      } }, { label: this.config?.enabled ? '关闭并重启' : '启用并重启', run: async () => {
-        const enabled = !this.config?.enabled
-        await writeDesktopTsnetEnabled(app.getPath('userData'), enabled)
+        await openTextFile(path)
+      } }, { label: this.config?.enabled ? '重启应用' : '启用并重启', run: async () => {
+        if (!this.config?.enabled) await writeDesktopTsnetEnabled(app.getPath('userData'), true)
         app.relaunch()
         app.quit()
       } })
