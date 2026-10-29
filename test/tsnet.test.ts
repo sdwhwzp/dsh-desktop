@@ -18,16 +18,25 @@ const config: DesktopTsnetConfig = {
   enabled: true, hostname: 'dsh-test', controlURL: 'https://controlplane.tailscale.com', routes: [],
 }
 
-it('keeps an absent configuration disabled and preserves custom Headscale routes when toggled', async () => {
+it('preconfigures the Tizhi private network and preserves custom Headscale routes when toggled', async () => {
   const { root, path } = await fixture()
-  expect((await readDesktopTsnetConfig(root)).enabled).toBe(false)
+  expect(await readDesktopTsnetConfig(root)).toMatchObject({ enabled: true,
+    controlURL: 'https://gr.gr-iot.cn:18443/', routes: [{ host: 'gr.gr-iot.cn', address: '100.64.0.6' }] })
   await expect(readFile(path)).rejects.toMatchObject({ code: 'ENOENT' })
   await writeFile(path, JSON.stringify({ enabled: false, controlURL: 'https://headscale.example.com', custom: 'retained',
-    routes: [{ host: 'gr.gr-iot.cn', address: '100.64.0.6' }] }))
+    authKey: 'fixture-key', routes: [{ host: 'gr.gr-iot.cn', address: '100.64.0.6' }] }))
   await writeDesktopTsnetEnabled(root, true)
-  expect(await readDesktopTsnetConfig(root)).toMatchObject({ enabled: true, controlURL: 'https://headscale.example.com/',
+  expect(await readDesktopTsnetConfig(root)).toMatchObject({ enabled: true, controlURL: 'https://headscale.example.com/', authKey: 'fixture-key',
     routes: [{ host: 'gr.gr-iot.cn', address: '100.64.0.6' }] })
   expect(JSON.parse(await readFile(path, 'utf8'))).toHaveProperty('custom', 'retained')
+})
+
+it('migrates only untouched legacy defaults to the embedded Tizhi network', async () => {
+  const { root, path } = await fixture()
+  await writeFile(path, JSON.stringify({ enabled: false, hostname: 'tizhi-pc',
+    controlURL: 'https://controlplane.tailscale.com', routes: [] }))
+  expect(await readDesktopTsnetConfig(root)).toMatchObject({ enabled: true, hostname: 'tizhi-pc',
+    controlURL: 'https://gr.gr-iot.cn:18443/', routes: [{ host: 'gr.gr-iot.cn', address: '100.64.0.6' }] })
 })
 
 it.each([
@@ -36,6 +45,7 @@ it.each([
   { routes: [{ host: 'gr.gr-iot.cn', address: '127.0.0.1' }] },
   { routes: [{ host: 'same.example.com', address: '100.64.0.1' }, { host: 'same.example.com', address: '100.64.0.2' }] },
   { authKeyEnvironment: 'not a variable' },
+  { authKey: 'contains whitespace' },
 ])('rejects invalid settings without replacing them: %j', async (value) => {
   const { root, path } = await fixture()
   const raw = JSON.stringify(value)
@@ -44,11 +54,11 @@ it.each([
   expect(await readFile(path, 'utf8')).toBe(raw)
 })
 
-it('carries secrets only in stdin, acknowledges withdrawal, and stops its real child on EOF', async () => {
+it('carries an inline secret only in stdin, acknowledges withdrawal, and stops its real child on EOF', async () => {
   const { root } = await fixture()
   const capture = join(root, 'capture.json')
   const states: DesktopTsnetState[] = []
-  const client = new DesktopTsnet(process.execPath, { ...config, authKeyEnvironment: 'TEST_AUTH_KEY' }, join(root, 'state'),
+  const client = new DesktopTsnet(process.execPath, { ...config, authKey: 'fixture-key' }, join(root, 'state'),
     (state) => { states.push(state) }, { ...process.env, TEST_AUTH_KEY: 'fixture-key', TS_AUTHKEY: 'ambient-key',
       DEEPSEEK_API_KEY: 'model-key' }, [join(import.meta.dirname, 'fixtures/tsnet-helper.mjs'), 'online', capture])
   onTestFinished(async () => { await client.close() })

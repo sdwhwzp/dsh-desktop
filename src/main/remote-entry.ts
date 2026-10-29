@@ -21,6 +21,8 @@ let stopped = false
 const network = new RemoteNetwork()
 const shellFile = join(__dirname, '../remote/index.html')
 const shellUrl = pathToFileURL(shellFile).href
+const DEFAULT_SERVER = 'https://gr.gr-iot.cn:3081/'
+const DEFAULT_COMPANION = 'wss://gr.gr-iot.cn:3082/'
 
 function trusted(event: IpcMainInvokeEvent): void {
   if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame ||
@@ -181,8 +183,8 @@ async function bootstrap(): Promise<void> {
     publish()
     return
   }
-  let target = ''
-  let companion = ''
+  let target = serverOrigin(DEFAULT_SERVER)
+  let companion = DEFAULT_COMPANION
   try {
     const settings = JSON.parse(readFileSync(join(app.getPath('userData'), 'server.json'), 'utf8'))
     target = serverOrigin(settings.server)
