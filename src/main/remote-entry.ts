@@ -18,7 +18,7 @@ let timer: NodeJS.Timeout | undefined
 let removeCookieListener: (() => void) | undefined
 let showingFolders = false
 let stopped = false
-const network = new RemoteNetwork()
+const network = new RemoteNetwork(publish)
 const shellFile = join(__dirname, '../remote/index.html')
 const shellUrl = pathToFileURL(shellFile).href
 const DEFAULT_SERVER = 'https://gr.gr-iot.cn:3081/'
@@ -169,6 +169,8 @@ async function bootstrap(): Promise<void> {
       else if (action === 'network-save' && typeof value === 'string') {
         await network.saveAuthKey(value)
         publish()
+      } else if (action === 'network-login') {
+        await network.openLogin()
       } else if (action === 'network-restart') {
         setTimeout(() => { app.relaunch(); app.quit() }, 250)
       }

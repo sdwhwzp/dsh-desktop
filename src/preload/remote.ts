@@ -13,6 +13,7 @@ window.addEventListener('DOMContentLoaded', () => {
   const networkForm = element<HTMLFormElement>('network-form')
   const networkSave = element<HTMLButtonElement>('network-save')
   const networkRestart = element<HTMLButtonElement>('network-restart')
+  const networkLogin = element<HTMLButtonElement>('network-login')
   const networkReveal = element<HTMLButtonElement>('network-key-reveal')
   let busy = false
   let actionError: string | undefined
@@ -31,17 +32,29 @@ window.addEventListener('DOMContentLoaded', () => {
     element('connection').textContent = state.error ? '连接需检查' : state.account ? '服务器已连接' : state.server ? '等待登录' : '请填写服务器'
     notice.textContent = actionError ?? state.error ?? (state.account ? '选择目录后，可在服务器工作区列表中使用。' : state.server ? '请点击「返回会话」，使用原有账号和密码登录。' : '填写服务器地址并连接，然后使用已有账号登录。')
     networkCard.classList.toggle('error', Boolean(state.network.error))
-    networkCard.classList.toggle('configured', state.network.hasAuthKey && !state.network.error)
+    networkCard.classList.toggle('configured', state.network.phase === 'online')
+    networkCard.classList.toggle('attention', state.network.phase === 'needs-approval' || state.network.phase === 'needs-login')
     networkStatus.textContent = state.network.error
       ? '连接失败：' + state.network.error
       : networkSaved
         ? '密钥已保存，请点击“重启并连接”'
-        : state.network.hasAuthKey
-          ? state.network.enabled ? '密钥已保存，重启后连接' : '密钥已保存，内网未启用'
-          : '尚未配置密钥'
+        : !state.network.hasAuthKey
+          ? '尚未配置密钥'
+          : state.network.phase === 'online'
+            ? '内网已连接'
+            : state.network.phase === 'needs-approval'
+              ? '等待管理员批准此设备'
+              : state.network.phase === 'needs-login'
+                ? '请打开内网登录页完成登录'
+                : state.network.phase === 'connecting'
+                  ? '正在连接内网'
+                  : state.network.enabled ? '内网等待连接' : '密钥已保存，内网未启用'
     networkSave.disabled = busy
-    networkRestart.disabled = busy
+    networkRestart.disabled = busy || !state.network.hasAuthKey
+    networkLogin.hidden = state.network.phase !== 'needs-login'
+    networkLogin.disabled = busy
     networkAuthKey.disabled = busy
+    networkReveal.disabled = busy
     folders.replaceChildren()
     if (!state.folders.length) {
       const empty = document.createElement('p')
@@ -122,6 +135,7 @@ window.addEventListener('DOMContentLoaded', () => {
     })
   })
   networkRestart.addEventListener('click', () => { void act('network-restart') })
+  networkLogin.addEventListener('click', () => { void act('network-login') })
   ipcRenderer.on('remote:changed', (_event, next: RemoteState) => render(next))
   ipcRenderer.on('remote:focus-network', () => {
     networkCard.scrollIntoView({ behavior: 'smooth', block: 'center' })

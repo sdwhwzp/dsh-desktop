@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { HttpsProxyAgent } from 'https-proxy-agent'
-import type { RemoteNetworkSettings } from '../../shared/remote'
+import type { RemoteNetworkPhase, RemoteNetworkSettings } from '../../shared/remote'
 import {
   DesktopTsnet,
   readDesktopTsnetConfig,
@@ -36,13 +36,19 @@ export class RemoteNetwork {
   private closed = false
   agent?: HttpsProxyAgent<string>
 
+  constructor(private readonly changed: () => void = () => {}) {}
+
   settings(): RemoteNetworkSettings {
+    const state = this.client?.state
+    const phase: RemoteNetworkPhase = this.failure ? 'error' : state?.phase
+      ?? (this.config?.enabled === false ? 'disabled' : 'connecting')
     return {
       enabled: this.config?.enabled ?? false,
       hasAuthKey: this.config?.authKey !== undefined || this.config?.authKeyEnvironment !== undefined,
       hostname: this.config?.hostname ?? '',
       controlURL: this.config?.controlURL ?? '',
-      error: this.failure ?? null,
+      phase,
+      error: this.failure ?? (state?.phase === 'error' ? '内网连接失败，请检查密钥和网络后重启应用。' : null),
     }
   }
 
@@ -50,6 +56,7 @@ export class RemoteNetwork {
     await writeDesktopTsnetAuthKey(app.getPath('userData'), authKey)
     this.config = await readDesktopTsnetConfig(app.getPath('userData'))
     this.failure = undefined
+    this.changed()
   }
 
   start(): Promise<void> {
@@ -63,7 +70,7 @@ export class RemoteNetwork {
       if (!this.config.enabled) return
       const helper = app.isPackaged ? join(process.resourcesPath, 'tsnet') : join(app.getAppPath(), 'build/tsnet')
       this.client = new DesktopTsnet(join(helper, process.platform === 'win32' ? 'dsh-tsnet.exe' : 'dsh-tsnet'),
-        this.config, join(app.getPath('userData'), 'desktop/tsnet'), () => {})
+        this.config, join(app.getPath('userData'), 'desktop/tsnet'), () => { this.changed() })
       this.proxy = await this.client.start()
       this.agent = new HttpsProxyAgent(this.proxy)
     } catch (error) {
@@ -78,6 +85,12 @@ export class RemoteNetwork {
     if (!this.proxy) return
     await browserSession.setProxy({ mode: 'fixed_servers', proxyRules: this.proxy,
       proxyBypassRules: 'localhost;127.0.0.1;[::1]' })
+  }
+
+  async openLogin(): Promise<void> {
+    const state = this.client?.state
+    if (state?.phase !== 'needs-login') throw new Error('当前不需要登录内网账号')
+    await shell.openExternal(state.loginURL)
   }
 
   async show(configure?: () => void): Promise<void> {

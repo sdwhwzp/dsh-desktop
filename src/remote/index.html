@@ -20,7 +20,7 @@
       <div class="account-row"><span id="account">未登录</span><button id="logout" disabled>退出账号</button></div>
     </section>
     <section class="network-card" aria-label="内网连接设置">
-      <div class="network-title"><div><p class="eyebrow">Tailscale / Headscale</p><h2>内网连接</h2></div><span id="network-status">正在读取配置…</span></div>
+      <div class="network-title"><div><p class="eyebrow">Tailscale / Headscale</p><h2>内网连接</h2></div><span id="network-status" role="status" aria-live="polite">正在读取配置…</span></div>
       <p class="network-help">粘贴管理员提供的预授权密钥（通常以 <code>tskey-auth-</code> 开头）。密钥只保存在本机，保存后需要重启应用才能生效。</p>
       <form id="network-form">
         <label for="network-auth-key">内网预授权密钥</label>
@@ -30,7 +30,7 @@
           <button class="primary" id="network-save" type="submit">保存密钥</button>
         </div>
       </form>
-      <div class="network-actions"><button id="network-restart" type="button">重启并连接</button><span>重启后显示“内网已连接”即完成；显示“等待管理员批准”时需在 Headscale 后台批准设备。</span></div>
+      <div class="network-actions"><button id="network-restart" type="button">重启并连接</button><button class="primary" id="network-login" type="button" hidden>打开内网登录页</button><span>重启后显示“内网已连接”即完成；显示“等待管理员批准”时需由管理员批准设备后重启。</span></div>
     </section>
     <p id="notice" role="status" aria-live="polite">正在连接服务器…</p>
     <section id="folders" aria-label="已授权目录列表"></section>

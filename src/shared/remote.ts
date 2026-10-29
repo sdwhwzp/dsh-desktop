@@ -9,12 +9,14 @@ export interface RemoteFolder {
   desktopControl: boolean
   status: string
 }
+export type RemoteNetworkPhase = 'disabled' | 'connecting' | 'needs-approval' | 'needs-login' | 'online' | 'error'
 /** Sanitized private-network settings; authentication keys never cross into the renderer. */
 export interface RemoteNetworkSettings {
   enabled: boolean
   hasAuthKey: boolean
   hostname: string
   controlURL: string
+  phase: RemoteNetworkPhase
   error: string | null
 }
 export interface RemoteControllerState {
