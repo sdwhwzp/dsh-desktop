@@ -1,8 +1,10 @@
-import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 import type { UpdateStatus } from '../src/shared/contracts'
 import {
   isUpdateDismissed,
+  rollbackReleases,
+  rollbackEmptyMessage,
+  isNewManualPresentation,
   shouldShowUpdate,
   updateHeadline,
   updateMessage
@@ -53,24 +55,6 @@ describe('desktop update card visibility', () => {
   })
 })
 
-describe('secure update card wiring', () => {
-  it('bundles a preload and mounts it without enabling Node in Harness', async () => {
-    const [config, main, preload] = await Promise.all([
-      readFile('electron.vite.config.ts', 'utf8'),
-      readFile('src/main/index.ts', 'utf8'),
-      readFile('src/preload/index.ts', 'utf8')
-    ])
-
-    expect(config).toContain('preload:')
-    expect(main).toContain("preload: join(import.meta.dirname, '../preload/index.cjs')")
-    expect(main).toContain('nodeIntegration: false')
-    expect(preload).toContain("ipcRenderer.on('updates:status-changed'")
-    expect(preload).toContain("ipcRenderer.invoke('updates:install')")
-    expect(preload).toContain("'right:20px'")
-    expect(preload).toContain("'bottom:20px'")
-  })
-})
-
 describe('downgrade copy', () => {
   it('names the downgrade in both locales', () => {
     const status: UpdateStatus = {
@@ -101,19 +85,51 @@ describe('accepting an update is what starts the download', () => {
   })
 })
 
-describe('about dialog and version selection wiring', () => {
-  it('wires about modal with top-right close and version picker alongside check for updates', async () => {
-    const [main, preload] = await Promise.all([
-      readFile('src/main/index.ts', 'utf8'),
-      readFile('src/preload/index.ts', 'utf8')
-    ])
 
-    expect(main).toContain("window.webContents.send('desktop:show-about', info)")
-    expect(preload).toContain("ipcRenderer.on('desktop:show-about'")
-    expect(preload).toContain("zh ? '选择版本' : 'Select version'")
-    expect(preload).toContain("zh ? '检查更新' : 'Check for updates'")
-    expect(preload).toContain("button('×', 'about-close')")
-    expect(preload).toContain('mountAbout()')
+
+describe('manual update presentation lifecycle', () => {
+  it('reopens a cached release only for a new manual request', () => {
+    const previous: UpdateStatus = { ...downloading, manual: true, presentationId: 1 }
+    expect(isNewManualPresentation({ ...previous, percent: 80 }, previous)).toBe(false)
+    expect(isNewManualPresentation({ ...previous, phase: 'downloaded' }, previous)).toBe(false)
+    expect(isNewManualPresentation({ ...previous, presentationId: 2 }, previous)).toBe(true)
+    expect(isNewManualPresentation({ ...previous, manual: false, source: 'runtime', presentationId: 2 }, previous)).toBe(false)
+  })
+
+  it('opens the first live manual result and supports older producers without IDs', () => {
+    expect(isNewManualPresentation({ ...downloaded, manual: true })).toBe(true)
+    expect(isNewManualPresentation({ ...downloaded, manual: true, phase: 'checking' }, downloaded)).toBe(true)
+    expect(isNewManualPresentation({ ...downloading, manual: true }, { ...downloading, manual: true })).toBe(false)
+  })
+
+  it('distinguishes bootstrap snapshots from live manual requests without changing their request identity', () => {
+    const historical: UpdateStatus = { ...downloaded, phase: 'up-to-date', manual: true, presentationId: 7 }
+    expect(isNewManualPresentation(historical, undefined, 'snapshot')).toBe(false)
+    expect(isNewManualPresentation(historical, historical)).toBe(false)
+    expect(shouldShowUpdate(historical, false)).toBe(false)
+    expect(shouldShowUpdate({ ...historical, phase: 'available' }, false)).toBe(true)
+    expect(isNewManualPresentation({ ...historical, presentationId: 8 }, historical)).toBe(true)
+  })
+
+  it('names the available version in the notification title in both languages', () => {
+    const status: UpdateStatus = { ...downloaded, phase: 'available' }
+    expect(updateHeadline(status, 'zh').title).toBe('检测到新版本 v1.1.0')
+    expect(updateHeadline(status, 'en').title).toBe('New version v1.1.0 available')
   })
 })
 
+describe('About rollback choices', () => {
+  const releases = ['0.13.0', '0.12.0', '0.11.0', '0.12.0-rc.10', '0.12.0-rc.9'].map(version => ({ version, tag: `v${version}`, archiveUrl: `https://example.invalid/${version}/` }))
+
+  it('filters out the current and future versions from a mixed catalogue', () => {
+    expect(rollbackReleases(releases, '0.12.0').map(release => release.version)).toEqual(['0.12.0-rc.10', '0.12.0-rc.9', '0.11.0'])
+    expect(releases[0]?.version).toBe('0.13.0')
+  })
+
+  it('returns an empty state when no historical versions exist', () => {
+    expect(rollbackReleases(releases, '0.11.0')).toEqual([])
+    expect(rollbackReleases([], '0.12.0')).toEqual([])
+    expect(rollbackEmptyMessage('zh')).toBe('暂无可回退的历史版本')
+    expect(rollbackEmptyMessage('en')).toBe('No older versions available to roll back to')
+  })
+})

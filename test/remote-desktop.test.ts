@@ -318,7 +318,10 @@ describe('remote installer', () => {
     const installer = readFileSync(new URL('../build/installer.nsh', import.meta.url), 'utf8')
     const body = (installer.match(/!macro customInstall\r?\n([\s\S]*?)\r?\n\s*!macroend/)?.[1] ?? '')
       .split('\n').map(line => line.trim()).filter(line => line && !line.startsWith(';'))
-    expect(body[0]).toBe('!if "${APP_FILENAME}" == "dsh-desktop"')
+    // The staged directory swap is shared; only the dsh-desktop data directory is guarded.
+    expect(body[0]).toBe('!insertmacro dshFinishDirectories')
+    expect(body[1]).toBe('!if "${APP_FILENAME}" == "dsh-desktop"')
+    expect(body.slice(2, -1).every(line => line.includes('$APPDATA\\dsh-desktop'))).toBe(true)
     expect(body.at(-1)).toBe('!endif')
   })
 })

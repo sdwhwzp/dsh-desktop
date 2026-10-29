@@ -7,6 +7,7 @@ import {
   gpuFallbackStateEquals,
   gpuFallbackSwitches,
   isGpuLossFatal,
+  hasExhaustedGpuRecovery,
   isRendererGpuFallbackCandidate,
   parseGpuFallbackState,
   planGpuFallbackResponse,
@@ -23,13 +24,12 @@ describe('gpu fallback switches', () => {
     expect(gpuFallbackSwitches('default')).toEqual([])
   })
 
-  it('drops only the GPU sandbox at the first fallback level', () => {
-    expect(gpuFallbackSwitches('sandbox-disabled')).toEqual(['disable-gpu-sandbox'])
+  it('migrates legacy sandbox bypass to sandboxed software rendering', () => {
+    expect(gpuFallbackSwitches('sandbox-disabled')).toEqual(['disable-gpu', 'disable-gpu-compositing'])
   })
 
   it('turns hardware acceleration off entirely at the last fallback level', () => {
     expect(gpuFallbackSwitches('gpu-disabled')).toEqual([
-      'disable-gpu-sandbox',
       'disable-gpu',
       'disable-gpu-compositing'
     ])
@@ -47,6 +47,19 @@ describe('gpu loss classification', () => {
     expect(isGpuLossFatal('abnormal-exit')).toBe(true)
     expect(isGpuLossFatal('launch-failed')).toBe(true)
     expect(isGpuLossFatal('oom')).toBe(true)
+  })
+
+  it('ignores a TDR device-loss exit as Chromium recovering on its own', () => {
+    expect(isGpuLossFatal('crashed', 34)).toBe(false)
+  })
+
+  it('still treats other crashed exit codes as evidence', () => {
+    expect(isGpuLossFatal('crashed', 1)).toBe(true)
+    expect(isGpuLossFatal('crashed')).toBe(true)
+  })
+
+  it('does not exempt exit code 34 under a non-crashed reason', () => {
+    expect(isGpuLossFatal('abnormal-exit', 34)).toBe(true)
   })
 
   it('recognizes the signed Windows renderer exceptions from the field report', () => {
@@ -109,22 +122,22 @@ describe('gpu loss classification', () => {
 })
 
 describe('gpu fallback planning before the harness renders', () => {
-  it('drops the GPU sandbox and relaunches on the first loss', () => {
+  it('uses software rendering without dropping the sandbox on first startup loss', () => {
     expect(planGpuFallbackResponse({ state: state(), harnessRendered: false })).toEqual({
-      state: { level: 'sandbox-disabled', failures: 0, stableLaunches: 0 },
+      state: { level: 'gpu-disabled', failures: 0, stableLaunches: 0 },
       relaunch: true
     })
   })
 
-  it('escalates to a fully disabled GPU when the sandbox-less launch also failed', () => {
+  it('does not relaunch repeatedly for a legacy software-rendering state', () => {
     expect(
       planGpuFallbackResponse({
         state: state({ level: 'sandbox-disabled' }),
         harnessRendered: false
       })
     ).toEqual({
-      state: { level: 'gpu-disabled', failures: 0, stableLaunches: 0 },
-      relaunch: true
+      state: { level: 'sandbox-disabled', failures: 1, stableLaunches: 0 },
+      relaunch: false
     })
   })
 
@@ -153,7 +166,7 @@ describe('gpu fallback planning while the user is working', () => {
       expect(current.level).toBe('default')
     }
     expect(planGpuFallbackResponse({ state: current, harnessRendered: true })).toEqual({
-      state: { level: 'sandbox-disabled', failures: 0, stableLaunches: 0 },
+      state: { level: 'gpu-disabled', failures: 0, stableLaunches: 0 },
       relaunch: false
     })
   })
@@ -202,7 +215,7 @@ describe('climbing back out of the fallback', () => {
       planStableLaunch(
         state({ level: 'gpu-disabled', stableLaunches: GPU_FALLBACK_PROBE_LAUNCHES - 1 })
       )
-    ).toEqual({ level: 'sandbox-disabled', failures: 0, stableLaunches: 0 })
+    ).toEqual({ level: 'default', failures: 0, stableLaunches: 0 })
   })
 
   it('walks all the way back to an untouched Chromium', () => {
@@ -230,7 +243,7 @@ describe('gpu fallback persistence', () => {
 
   it('reads a level written before the counters existed', () => {
     expect(parseGpuFallbackState('{"level":"sandbox-disabled"}')).toEqual({
-      level: 'sandbox-disabled',
+      level: 'gpu-disabled',
       failures: 0,
       stableLaunches: 0
     })
@@ -247,5 +260,17 @@ describe('gpu fallback persistence', () => {
     expect(gpuFallbackStateEquals(state(), state({ failures: 1 }))).toBe(false)
     expect(gpuFallbackStateEquals(state(), state({ stableLaunches: 1 }))).toBe(false)
     expect(gpuFallbackStateEquals(state(), state({ level: 'gpu-disabled' }))).toBe(false)
+  })
+})
+
+
+describe('exhausted graphics recovery', () => {
+  it('surfaces a GPU-only startup failure even when no renderer crash event arrives', () => {
+    expect(hasExhaustedGpuRecovery(state({ level: 'gpu-disabled', failures: 1 }), true)).toBe(true)
+    expect(hasExhaustedGpuRecovery(state(), true)).toBe(false)
+  })
+  it('stops repeated software-rendering failures even when renderer reload cooldowns reset', () => {
+    expect(hasExhaustedGpuRecovery(state({ level: 'gpu-disabled', failures: 1 }), false)).toBe(false)
+    expect(hasExhaustedGpuRecovery(state({ level: 'gpu-disabled', failures: 3 }), false)).toBe(true)
   })
 })

@@ -94,17 +94,6 @@ export class DesktopService {
     if (!uuid.test(this.installationId)) throw new Error('Invalid installation ID')
   }
   beginSession(): void {
-    if (existsSync(this.marker)) {
-      try {
-        const old = JSON.parse(readFileSync(this.marker, 'utf8')) as { eventId: string; version: string }
-        if (uuid.test(old.eventId) && isVersion(old.version) && old.version === this.options.version) {
-          const log = tailLog(this.options.logPath)
-          if (!isHealthySessionLog(log.lines)) {
-            this.capture('unclean-exit', 'Previous session ended without a clean shutdown (crash, power loss or forced termination).', old.eventId, old.version)
-          }
-        }
-      } catch { /* A damaged marker must not prevent the next session from being tracked. */ }
-    }
     this.sessionId = randomUUID()
     atomic(this.marker, { eventId: this.sessionId, version: this.options.version })
   }
@@ -149,14 +138,20 @@ export class DesktopService {
       const body = readFileSync(path, 'utf8')
       unlinkSync(path)
       try {
+        let kind: string | undefined
+        try { kind = (JSON.parse(body) as { kind?: string }).kind } catch { /* A malformed report still goes through consent. */ }
+        if (kind === 'unclean-exit') continue
         if (await this.options.confirmUpload(body) !== true) continue
         await this.options.request(SERVICE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(5000), redirect: 'error' })
       } catch { /* Best effort: failed reports are discarded. */ }
     }
   }
 
-  async checkUpdate(): Promise<UpdateDecision> {
+  // A user-initiated check asks the policy service to bypass percentage rollout.
+  // Server-side version, platform, enabled-release, and archive validation remain mandatory.
+  async checkUpdate(manual = false): Promise<UpdateDecision> {
     const query = new URLSearchParams({ installationId: this.installationId, currentVersion: this.options.version, platform: this.platform })
+    if (manual) query.set('manual', 'true')
     const response = await this.options.request(`${SERVICE_URL}/v1/updates/check?${query}`, { signal: AbortSignal.timeout(5000), redirect: 'error' })
     if (!response.ok) throw new Error(`Update policy unavailable (${response.status})`)
     const policy = await response.json() as Record<string, unknown>
