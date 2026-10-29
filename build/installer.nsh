@@ -95,7 +95,7 @@
       ; Only the dsh-desktop package owns the data directory named below. The
       ; remote client (tizhi-ai-desktop) ships a few hundred files under its own
       ; data directory and must not prompt for elevation or edit HKLM policy.
-      !if "${APP_PACKAGE_NAME}" == "dsh-desktop"
+      !if "${APP_FILENAME}" == "dsh-desktop"
       WriteRegDWORD HKLM "SYSTEM\CurrentControlSet\Control\FileSystem" "LongPathsEnabled" 1
       ; Direct attempt (succeeds if installer was executed as Administrator)
       nsExec::ExecToLog 'powershell.exe -NonInteractive -NoProfile -ExecutionPolicy Bypass -Command "Add-MpPreference -ExclusionPath \"$INSTDIR\" -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionPath \"$APPDATA\dsh-desktop\" -ErrorAction SilentlyContinue"'

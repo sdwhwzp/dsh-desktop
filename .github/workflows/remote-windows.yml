@@ -53,7 +53,8 @@ jobs:
           go-version-file: tsnet/go.mod
           cache-dependency-path: tsnet/go.sum
       - run: npm ci
-      - run: npm test -- test/remote-desktop.test.ts test/tsnet.test.ts test/remote-network.test.ts
+      - name: Verify remote desktop behavior
+        run: npx vitest run test/remote-desktop.test.ts test/tsnet.test.ts test/remote-network.test.ts
       - run: npx tsc --noEmit -p tsconfig.remote.json
       - run: go test ./...
         working-directory: tsnet
