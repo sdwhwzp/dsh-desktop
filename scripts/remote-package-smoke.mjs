@@ -10,15 +10,19 @@ import { _electron } from 'playwright';
 import { WebSocketServer } from 'ws';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
 
-const executablePath = resolve(process.argv[2] || '');
-assert.ok(process.argv[2], 'Pass the installed desktop executable path');
-const resources = process.platform === 'darwin' ? resolve(dirname(executablePath), '../Resources') : resolve(dirname(executablePath), 'resources');
-const helperDirectory = resolve(resources, 'tsnet');
-const helperVersion = JSON.parse(await readFile(resolve(helperDirectory, 'version.json'), 'utf8'));
-const helper = await promisify(execFile)(resolve(helperDirectory, process.platform === 'win32' ? 'dsh-tsnet.exe' : 'dsh-tsnet'), ['--version'], { windowsHide: true, timeout: 10_000 });
-assert.equal(helperVersion.protocolVersion, 1);
-assert.equal(helper.stdout.trim(), `dsh-tsnet protocol=1 tailscale=${helperVersion.tailscaleVersion}`);
+const development = process.argv[2] === '--development';
+const executablePath = development ? (await import('electron')).default : resolve(process.argv[2] || '');
+assert.ok(process.argv[2], 'Pass the installed desktop executable path, or --development after build:remote');
+if (!development) {
+  const resources = process.platform === 'darwin' ? resolve(dirname(executablePath), '../Resources') : resolve(dirname(executablePath), 'resources');
+  const helperDirectory = resolve(resources, 'tsnet');
+  const helperVersion = JSON.parse(await readFile(resolve(helperDirectory, 'version.json'), 'utf8'));
+  const helper = await promisify(execFile)(resolve(helperDirectory, process.platform === 'win32' ? 'dsh-tsnet.exe' : 'dsh-tsnet'), ['--version'], { windowsHide: true, timeout: 10_000 });
+  assert.equal(helperVersion.protocolVersion, 1);
+  assert.equal(helper.stdout.trim(), `dsh-tsnet protocol=1 tailscale=${helperVersion.tailscaleVersion}`);
+}
 const reportPath = process.argv[3] && resolve(process.argv[3]);
 const root = await realpath(await mkdtemp(join(tmpdir(), 'tizhi-package-smoke-')));
 const profile = join(root, 'profile');
@@ -28,6 +32,7 @@ const token = 'fixture-directory-token-'.repeat(3);
 const grants = new Map();
 let activeSocket;
 let client;
+let stateFailure = false;
 const results = [];
 const account = request => /dsh_gateway_token=(alice|bob)/.exec(request.headers.cookie || '')?.[1];
 const server = createServer((request, response) => {
@@ -45,6 +50,7 @@ const server = createServer((request, response) => {
     response.setHeader('Content-Type', 'application/json');
     if (!user) { response.statusCode = 401; response.end('{}'); return; }
     if (url.pathname === '/api/dsh-passwords/state') {
+      if (stateFailure) { response.statusCode = 502; response.end('{}'); return; }
       response.end(JSON.stringify({ ok: true, me: { username: user, role: 'user' }, users: [{ id: user === 'alice' ? 2 : 3, username: user }] }));
     } else if (url.pathname.endsWith('/pair')) {
       response.end(JSON.stringify({ ok: true, pairing: { code, port: server.address().port, secure: false } }));
@@ -90,7 +96,9 @@ async function remoteEvaluate(expression) {
   }, expression);
 }
 async function launch() {
-  client = await _electron.launch({ executablePath, cwd: root, env: { ...process.env, DSH_REMOTE_USER_DATA: profile }, timeout: 30_000 });
+  client = await _electron.launch({ executablePath,
+    args: development ? [fileURLToPath(new URL('../out/main/index.js', import.meta.url))] : [],
+    cwd: root, env: { ...process.env, DSH_REMOTE_USER_DATA: profile }, timeout: 30_000 });
   const page = await client.firstWindow();
   await page.locator('#account').waitFor();
   await page.locator('#folders-page').click();
@@ -162,8 +170,19 @@ try {
   });
   assert.deepEqual(preferences, { sandbox: true, nodeIntegration: false, contextIsolation: true, preload: '' });
   results.push('account login and sandboxed remote page');
+  stateFailure = true;
+  await page.locator('#add').click();
+  await eventually(async () => {
+    assert.match(await page.locator('#notice').textContent(), /502/);
+    assert.match(await page.locator('#account').textContent(), /alice/);
+    assert.equal(await page.locator('#add').isEnabled(), true);
+  });
+  assert.equal(await page.locator('.folder').count(), 0);
+  stateFailure = false;
   await page.locator('#add').click();
   await eventually(async () => assert.equal(await page.locator('.online').textContent(), '已连接'));
+  assert.match(await page.locator('#account').textContent(), /alice/);
+  results.push('failed account check during directory selection retains login and retry connects the folder');
   assert.equal((await fileRequest('write', { path: '验收/hello.txt', content: 'native worker verified' })).ok, true);
   assert.equal(await readFile(join(folder, '验收/hello.txt'), 'utf8'), 'native worker verified');
   assert.equal((await fileRequest('read', { path: '验收/hello.txt' })).ok, true);
@@ -210,7 +229,7 @@ try {
   assert.equal((await fileRequest('read', { path: '验收/hello.txt' })).ok, true);
   assert.equal((await fileRequest('bash', { command: 'git branch --show-current' })).value.stdout.trim(), 'wzp');
   results.push('encrypted grants, file access and terminal capability survive app restart');
-  const report = { platform: process.platform, arch: process.arch, results, verifiedAt: new Date().toISOString() };
+  const report = { mode: development ? 'development' : 'installed', platform: process.platform, arch: process.arch, results, verifiedAt: new Date().toISOString() };
   console.log(JSON.stringify(report, null, 2));
   if (reportPath) { await mkdir(dirname(reportPath), { recursive: true }); await writeFile(reportPath, JSON.stringify(report, null, 2) + '\n'); }
 } finally {
