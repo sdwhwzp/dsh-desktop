@@ -112,6 +112,7 @@ it('publishes a migrated custom preset through the real Harness web registry', a
   const overlay = join(home, 'desktop.patch.yml')
   await writeFile(overlay, '[]\n')
   const root = resolve(import.meta.dirname, '..')
+  let closed = Promise.resolve()
   const runtime = new HarnessRuntime({
     dshEntryPath: join(root, 'node_modules/@deepseek-ai/dsh/lib/bin.js'),
     nodeEntryPath: join(root, 'build/harness-node-entry.mjs'),
@@ -122,7 +123,11 @@ it('publishes a migrated custom preset through the real Harness web registry', a
     logPath: join(home, 'runtime.log'),
     preferredPort: 0,
     startupTimeoutMs: 30_000,
-    launchProcess: (executable, args, options) => spawn(executable, args, options),
+    launchProcess: (executable, args, options) => {
+      const child = spawn(executable, args, options)
+      closed = new Promise<void>(resolve => { child.once('close', () => resolve()) })
+      return child
+    },
     onChanged() {}
   })
   try {
@@ -150,6 +155,7 @@ it('publishes a migrated custom preset through the real Harness web registry', a
     expect(await response.text()).toContain('const previewImport = async (file) =>')
   } finally {
     await runtime.stop()
+    await closed
   }
 }, 45_000)
 

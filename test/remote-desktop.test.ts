@@ -320,8 +320,11 @@ describe('remote installer', () => {
       .split('\n').map(line => line.trim()).filter(line => line && !line.startsWith(';'))
     // The staged directory swap is shared; only the dsh-desktop data directory is guarded.
     expect(body[0]).toBe('!insertmacro dshFinishDirectories')
-    expect(body[1]).toBe('!if "${APP_FILENAME}" == "dsh-desktop"')
-    expect(body.slice(2, -1).every(line => line.includes('$APPDATA\\dsh-desktop'))).toBe(true)
+    expect(body[1]).toContain('icacls "$INSTDIR"')
+    expect(body[1]).toContain('*S-1-15-2-1:(OI)(CI)(RX)')
+    expect(body[1]).toContain('*S-1-15-2-2:(OI)(CI)(RX)')
+    expect(body[2]).toBe('!if "${APP_FILENAME}" == "dsh-desktop"')
+    expect(body.slice(3, -1).every(line => line.includes('$APPDATA\\dsh-desktop'))).toBe(true)
     expect(body.at(-1)).toBe('!endif')
   })
 })
