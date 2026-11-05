@@ -179,6 +179,103 @@ describe('companion connection', () => {
 })
 
 describe('account transition', () => {
+  function fixture() {
+    const fetcher = vi.fn<typeof fetch>(async () => Response.json({
+      ok: true, me: { username: 'alice', role: 'user' }, users: [{ id: 2, username: 'alice' }]
+    }))
+    const gateway = new Gateway(TEST_SERVER, fetcher)
+    const store = new FolderStore(join(root(), 'store'), secrets)
+    const execute = vi.fn<import('../src/main/remote/connection').ExecuteFile>(async () => ({}))
+    const controller = new RemoteController(gateway, store, execute, () => {})
+    disposers.push(() => controller.dispose())
+    return { fetcher, gateway, store, execute, controller }
+  }
+
+  it.each(['network', 'timeout', 'server', 'invalid-response'])('keeps the account and permits retry after a %s error when opening the picker', async kind => {
+    const { fetcher, controller } = fixture()
+    await controller.refresh()
+    if (kind === 'network') fetcher.mockRejectedValueOnce(new Error('network unavailable'))
+    else if (kind === 'timeout') fetcher.mockRejectedValueOnce(new DOMException('request timed out', 'TimeoutError'))
+    else if (kind === 'server') fetcher.mockResolvedValueOnce(new Response('', { status: 502 }))
+    else fetcher.mockResolvedValueOnce(new Response('<html>unavailable</html>'))
+    const pick = vi.fn(async () => null)
+    await expect(controller.add(pick)).rejects.toThrow()
+    expect(pick).not.toHaveBeenCalled()
+    expect(controller.snapshot()).toMatchObject({ account: { id: 2, username: 'alice' }, error: expect.any(String) })
+    await controller.add(pick)
+    expect(pick).toHaveBeenCalledTimes(1)
+    expect(controller.snapshot()).toMatchObject({ account: { id: 2 }, error: null })
+  })
+
+  it.each([401, 403])('clears the account on an explicit HTTP %s rejection', async status => {
+    const { fetcher, controller } = fixture()
+    await controller.refresh()
+    fetcher.mockResolvedValueOnce(new Response('', { status }))
+    const pick = vi.fn(async () => null)
+    await expect(controller.add(pick)).rejects.toThrow('登录已失效')
+    expect(pick).not.toHaveBeenCalled()
+    expect(controller.snapshot()).toMatchObject({ account: null, folders: [] })
+  })
+
+  it.each([502, 401])('rechecks the account after selection and does not pair when it returns HTTP %s', async status => {
+    const { fetcher, gateway, controller } = fixture()
+    const pair = vi.spyOn(gateway, 'pair')
+    await expect(controller.add(async () => {
+      fetcher.mockResolvedValueOnce(new Response('', { status }))
+      return root()
+    })).rejects.toThrow()
+    expect(pair).not.toHaveBeenCalled()
+    expect(controller.snapshot().account?.id ?? null).toBe(status === 401 ? null : 2)
+    expect(controller.snapshot().folders).toEqual([])
+  })
+
+  it('suspends connected folders and cancels running work on a transient check failure, then resumes', async () => {
+    const { server, endpoint } = await wsFixture()
+    const { fetcher, store, execute, controller } = fixture()
+    store.save({ ...grant(), endpoint })
+    let socket: WebSocket | undefined
+    let signal: AbortSignal | undefined
+    server.on('connection', peer => {
+      socket = peer
+      peer.once('message', raw => {
+        peer.send(JSON.stringify({ type: 'ready', workspaceId: JSON.parse(raw.toString()).workspaceId }))
+      })
+    })
+    execute.mockImplementation(async (_root, _op, _args, nextSignal) => {
+      signal = nextSignal
+      return new Promise(resolve => nextSignal.addEventListener('abort', () => resolve({}), { once: true }))
+    })
+    await controller.refresh()
+    await vi.waitFor(() => expect(controller.snapshot().folders[0]?.status).toBe('已连接'))
+    socket?.send(JSON.stringify({ type: 'request', id: 'pending', operation: 'bash', args: { command: 'fixture' } }))
+    await vi.waitFor(() => expect(signal).toBeDefined())
+    fetcher.mockResolvedValueOnce(new Response('', { status: 502 }))
+    await controller.refresh()
+    expect(signal?.aborted).toBe(true)
+    expect(controller.snapshot()).toMatchObject({ account: { id: 2 }, error: expect.stringContaining('502') })
+    expect(controller.snapshot().folders[0]?.status).toBe('等待连接')
+    await controller.refresh()
+    await vi.waitFor(() => expect(controller.snapshot().folders[0]?.status).toBe('已连接'))
+    expect(controller.snapshot().error).toBeNull()
+  })
+
+  it('performs a new account check when cookies change during an in-flight refresh', async () => {
+    const { fetcher, controller } = fixture()
+    await controller.refresh()
+    let complete!: (response: Response) => void
+    fetcher.mockImplementationOnce(() => new Promise(resolve => { complete = resolve }))
+    const oldRefresh = controller.refresh()
+    controller.invalidate()
+    fetcher.mockResolvedValueOnce(Response.json({
+      ok: true, me: { username: 'bob', role: 'user' }, users: [{ id: 3, username: 'bob' }]
+    }))
+    const newRefresh = controller.refresh()
+    complete(Response.json({ ok: true, me: { username: 'alice', role: 'user' }, users: [{ id: 2, username: 'alice' }] }))
+    await Promise.all([oldRefresh, newRefresh])
+    expect(fetcher).toHaveBeenCalledTimes(3)
+    expect(controller.snapshot().account).toEqual({ id: 3, username: 'bob', role: 'user' })
+  })
+
   it('cancels a native directory selection when the user logs out during the dialog', async () => {
     const gateway = new Gateway(TEST_SERVER, async () => Response.json({ ok: true, me: { username: 'alice', role: 'user' }, users: [{ id: 2, username: 'alice' }] }))
     const controller = new RemoteController(gateway, new FolderStore(join(root(), 'store'), secrets), vi.fn(), () => {})

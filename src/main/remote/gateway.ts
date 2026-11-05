@@ -34,6 +34,11 @@ export function companionEndpoint(server: string, fields: Record<string, unknown
   return url.href
 }
 
+/** Only an explicit authentication rejection means the saved login is no longer usable. */
+export class GatewayAuthError extends Error {
+  constructor() { super('登录已失效或账号无权限，请重新登录服务器账号') }
+}
+
 /** Requests use the BrowserView's authenticated cookie jar and never accept a renderer token. */
 export class Gateway {
   constructor(readonly origin: string, private readonly fetcher: typeof fetch, readonly endpointOverride = '') {
@@ -47,7 +52,7 @@ export class Gateway {
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(10_000), cache: 'no-store'
     })
-    if (response.status === 401 || response.status === 403) throw new Error('请先登录有权限的 30 服务器账号')
+    if (response.status === 401 || response.status === 403) throw new GatewayAuthError()
     if (!response.ok) throw new Error(`服务器请求失败（HTTP ${response.status}）`)
     const result = record(await response.json())
     if (result.ok !== true) throw new Error('服务器未确认操作成功')

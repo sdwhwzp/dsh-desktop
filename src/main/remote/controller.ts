@@ -5,7 +5,7 @@ import type { ClientOptions } from 'ws'
 import type { RemoteAccount, RemoteControllerState } from '../../shared/remote'
 import { FolderConnection, type ExecuteFile } from './connection'
 import { FolderStore, type FolderGrant } from './folder-store'
-import { Gateway } from './gateway'
+import { Gateway, GatewayAuthError } from './gateway'
 
 /** Owns directory grants across login, logout, account changes and network loss. */
 export class RemoteController {
@@ -14,6 +14,7 @@ export class RemoteController {
   private error: string | null = null
   private connections = new Map<string, FolderConnection>()
   private refreshing?: Promise<void>
+  private refreshingEpoch?: number
   private disposed = false
   constructor(readonly gateway: Gateway, private readonly store: FolderStore,
     private readonly execute: ExecuteFile, private readonly changed: () => void,
@@ -32,15 +33,23 @@ export class RemoteController {
   invalidate(): void {
     this.epoch++
     this.account = null
+    this.stopConnections()
+    this.changed()
+  }
+  private stopConnections(): void {
     for (const connection of this.connections.values()) connection.stop()
     this.connections.clear()
-    this.changed()
   }
   dispose(): void { this.disposed = true; this.invalidate() }
 
   refresh(): Promise<void> {
-    if (this.refreshing) return this.refreshing
+    if (this.disposed) return Promise.resolve()
+    if (this.refreshing) {
+      // Cookie changes must not reuse an account check from the previous login.
+      return this.refreshingEpoch === this.epoch ? this.refreshing : this.refreshing.then(() => this.refresh())
+    }
     const epoch = this.epoch
+    this.refreshingEpoch = epoch
     this.refreshing = (async () => {
       try {
         const account = await this.gateway.account()
@@ -53,8 +62,7 @@ export class RemoteController {
         }
       } catch (error) {
         if (epoch !== this.epoch || this.disposed) return
-        this.invalidate()
-        this.error = error instanceof Error ? error.message : '无法连接服务器'
+        this.accountCheckFailed(error)
       } finally { this.changed() }
     })().finally(() => { this.refreshing = undefined })
     return this.refreshing
@@ -62,6 +70,7 @@ export class RemoteController {
 
   async add(pick: () => Promise<string | null>): Promise<void> {
     await this.refresh()
+    if (this.error) throw new Error(this.error)
     const owner = this.requireAccount()
     const epoch = this.epoch
     const selected = await pick()
@@ -144,10 +153,23 @@ export class RemoteController {
   }
   private async authorize(id: number, epoch: number): Promise<void> {
     if (this.disposed || epoch !== this.epoch || this.account?.id !== id) throw new Error('账号已切换或退出')
-    const current = await this.gateway.account()
+    let current: RemoteAccount
+    try { current = await this.gateway.account() } catch (error) {
+      if (!this.disposed && epoch === this.epoch && this.account?.id === id) this.accountCheckFailed(error)
+      throw error
+    }
     if (this.disposed || epoch !== this.epoch || this.account?.id !== id || current.id !== id) {
+      if (!this.disposed && epoch === this.epoch && current.id !== id) this.invalidate()
       throw new Error('账号已切换或退出')
     }
+  }
+  private accountCheckFailed(error: unknown): void {
+    if (error instanceof GatewayAuthError) this.invalidate()
+    else this.stopConnections()
+    // Keep the last known identity on transport/server errors, but suspend local
+    // access until a fresh server check succeeds. A failed request is not logout.
+    this.error = error instanceof Error ? error.message : '无法连接服务器'
+    this.changed()
   }
   private start(grant: FolderGrant, code?: string): { client: FolderConnection; ready: Promise<void> } {
     const epoch = this.epoch
