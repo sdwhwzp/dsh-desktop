@@ -18,6 +18,8 @@ on:
       - 'scripts/windows-directory-installer.mjs'
       - 'scripts/verify-target.mjs'
       - 'test/remote-desktop.test.ts'
+      - 'test/remote-permissions.test.ts'
+      - 'test/remote-editing.test.ts'
       - 'test/*network*'
       - 'test/tsnet*'
       - 'test/fixtures/tsnet*'
@@ -56,7 +58,7 @@ jobs:
           cache-dependency-path: tsnet/go.sum
       - run: npm ci
       - name: Verify remote desktop behavior
-        run: npx vitest run test/remote-desktop.test.ts test/tsnet.test.ts test/remote-network.test.ts test/windows-directory-installer.test.ts
+        run: npx vitest run test/remote-desktop.test.ts test/remote-permissions.test.ts test/remote-editing.test.ts test/tsnet.test.ts test/remote-network.test.ts test/windows-directory-installer.test.ts
       - run: npx tsc --noEmit -p tsconfig.remote.json
       - run: go test ./...
         working-directory: tsnet
@@ -91,6 +93,8 @@ jobs:
           if (-not (Test-Path $executable)) { throw 'Installed client is missing' }
           node scripts/remote-package-smoke.mjs "$executable" dist/remote/windows-verification.json
           if ($LASTEXITCODE -ne 0) { throw 'Installed client smoke failed' }
+          node scripts/remote-clipboard-smoke.mjs "$executable" dist/remote/windows-clipboard-verification.json
+          if ($LASTEXITCODE -ne 0) { throw 'Installed client clipboard smoke failed' }
           $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $($installer.Name)" | Set-Content -Encoding ascii dist/remote/SHA256SUMS
           $portable = Get-Item 'dist/remote/tizhi-ai-desktop-win-x64.zip'
@@ -98,6 +102,8 @@ jobs:
           Expand-Archive $portable.FullName $portableDir
           node scripts/remote-package-smoke.mjs (Join-Path $portableDir 'Tizhi AI Desktop.exe') dist/remote/portable-verification.json
           if ($LASTEXITCODE -ne 0) { throw 'Portable client smoke failed' }
+          node scripts/remote-clipboard-smoke.mjs (Join-Path $portableDir 'Tizhi AI Desktop.exe') dist/remote/portable-clipboard-verification.json
+          if ($LASTEXITCODE -ne 0) { throw 'Portable client clipboard smoke failed' }
           $hash = (Get-FileHash $portable.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $($portable.Name)" | Add-Content -Encoding ascii dist/remote/SHA256SUMS
           "${{ github.sha }}" | Set-Content -Encoding ascii dist/remote/COMMIT
@@ -113,6 +119,8 @@ jobs:
             dist/remote/COMMIT
             dist/remote/windows-verification.json
             dist/remote/portable-verification.json
+            dist/remote/windows-clipboard-verification.json
+            dist/remote/portable-clipboard-verification.json
       - name: Clean installed test client
         if: always()
         shell: pwsh

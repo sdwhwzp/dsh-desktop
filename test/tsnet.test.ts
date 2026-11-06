@@ -24,9 +24,9 @@ const config: DesktopTsnetConfig = {
   enabled: true, hostname: 'dsh-test', controlURL: 'https://controlplane.tailscale.com', routes: [],
 }
 
-it('preconfigures the Tizhi private network and preserves custom Headscale routes when toggled', async () => {
+it('defaults to direct connections and preserves custom Headscale routes when enabled', async () => {
   const { root, path } = await fixture()
-  expect(await readDesktopTsnetConfig(root)).toMatchObject({ enabled: true,
+  expect(await readDesktopTsnetConfig(root)).toMatchObject({ enabled: false,
     controlURL: 'https://gr.gr-iot.cn:18443/', routes: [{ host: 'gr.gr-iot.cn', address: '100.64.0.6' }] })
   await expect(readFile(path)).rejects.toMatchObject({ code: 'ENOENT' })
   await writeFile(path, JSON.stringify({ enabled: false, controlURL: 'https://headscale.example.com', custom: 'retained',
@@ -37,13 +37,13 @@ it('preconfigures the Tizhi private network and preserves custom Headscale route
   expect(JSON.parse(await readFile(path, 'utf8'))).toHaveProperty('custom', 'retained')
 })
 
-it('atomically migrates untouched legacy defaults to the embedded Tizhi network', async () => {
+it.each([false, true])('migrates legacy network endpoints while preserving enabled=%s', async enabled => {
   const { root, path } = await fixture()
-  await writeFile(path, JSON.stringify({ enabled: false, hostname: 'tizhi-pc',
+  await writeFile(path, JSON.stringify({ enabled, hostname: 'tizhi-pc',
     controlURL: 'https://controlplane.tailscale.com', routes: [], custom: 'retained' }))
-  expect(await readDesktopTsnetConfig(root)).toMatchObject({ enabled: true, hostname: 'tizhi-pc',
+  expect(await readDesktopTsnetConfig(root)).toMatchObject({ enabled, hostname: 'tizhi-pc',
     controlURL: 'https://gr.gr-iot.cn:18443/', routes: [{ host: 'gr.gr-iot.cn', address: '100.64.0.6' }] })
-  expect(JSON.parse(await readFile(path, 'utf8'))).toEqual({ enabled: true, hostname: 'tizhi-pc',
+  expect(JSON.parse(await readFile(path, 'utf8'))).toEqual({ enabled, hostname: 'tizhi-pc',
     controlURL: 'https://gr.gr-iot.cn:18443/', routes: [{ host: 'gr.gr-iot.cn', address: '100.64.0.6' }],
     custom: 'retained' })
 })

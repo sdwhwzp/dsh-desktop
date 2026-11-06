@@ -31,6 +31,19 @@ vi.mock('../src/main/remote/tsnet', () => ({ readDesktopTsnetConfig: networkMock
 const disposers: Array<() => void | Promise<void>> = []
 afterEach(async () => { for (const dispose of disposers.splice(0).reverse()) await dispose() })
 
+it('uses direct connections without starting a helper when the private network is disabled', async () => {
+  networkMocks.read.mockResolvedValueOnce({ enabled: false })
+  const startCalls = networkMocks.start.mock.calls.length
+  const network = new RemoteNetwork()
+  disposers.push(() => network.close())
+  const browserSession = { setProxy: vi.fn(async () => {}) }
+  await network.prepareSession(browserSession)
+  expect(networkMocks.start).toHaveBeenCalledTimes(startCalls)
+  expect(browserSession.setProxy).not.toHaveBeenCalled()
+  expect(network.agent).toBeUndefined()
+  expect(network.settings()).toMatchObject({ enabled: false, phase: 'disabled', error: null })
+})
+
 it('waits for the helper before assigning a browser proxy and rejects an enabled network failure', async () => {
   let ready!: (proxy: string) => void
   networkMocks.start.mockImplementationOnce(() => new Promise(resolve => { ready = resolve }))

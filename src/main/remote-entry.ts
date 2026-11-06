@@ -8,6 +8,8 @@ import { FolderStore } from './remote/folder-store'
 import { RemoteController } from './remote/controller'
 import { executeFile, waitForLocalOperations } from './remote/filesystem-process'
 import { RemoteNetwork } from './remote/network'
+import { installRemotePermissions } from './remote/permissions'
+import { remoteEditMenu } from './remote/editing'
 
 app.setName('梯智 AI Desktop')
 app.setPath('userData', process.env.DSH_REMOTE_USER_DATA || join(app.getPath('appData'), 'tizhi-ai-desktop'))
@@ -85,8 +87,6 @@ async function connect(target: string, companion = ''): Promise<void> {
   const partition = `persist:remote-${createHash('sha256').update(origin).digest('hex')}`
   const browserSession = session.fromPartition(partition)
   await network.prepareSession(browserSession)
-  browserSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
-  browserSession.setPermissionCheckHandler(() => false)
   const store = new FolderStore(join(app.getPath('userData'), 'folders.enc'), safeStorage)
   controller = new RemoteController(new Gateway(origin, browserSession.fetch.bind(browserSession) as typeof fetch, companion), store, executeFile, publish,
     network.agent ? { agent: network.agent } : {})
@@ -110,6 +110,7 @@ async function connect(target: string, companion = ''): Promise<void> {
   } })
   window.contentView.addChildView(view)
   const remoteView = view
+  installRemotePermissions(browserSession, remoteView.webContents, origin)
   const guardNavigation = (event: Electron.Event, url: string) => {
     if (new URL(url).origin !== origin) { event.preventDefault(); external(url) }
   }
@@ -149,7 +150,7 @@ async function bootstrap(): Promise<void> {
   window.on('close', () => app.quit())
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(process.platform === 'darwin' ? [{ label: '梯智 AI', submenu: [{ role: 'about' as const }, { role: 'quit' as const }] }] : []),
-    { label: '编辑', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
+    remoteEditMenu(() => showingFolders ? window.webContents : view?.webContents ?? window.webContents, process.platform, app.getLocale()),
     { label: '内网', submenu: [{ label: '内网连接（Tailscale / Headscale）…', click: () => { void network.show(focusNetworkSettings) } }] },
     { label: '窗口', submenu: [{ label: '刷新服务器页面', accelerator: 'CmdOrCtrl+R', click: () => view?.webContents.reload() }, { role: 'togglefullscreen' }, { role: 'minimize' }] }
   ]))

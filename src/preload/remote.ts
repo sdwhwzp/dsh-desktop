@@ -38,6 +38,8 @@ window.addEventListener('DOMContentLoaded', () => {
       ? '连接失败：' + state.network.error
       : networkSaved
         ? '密钥已保存，请点击“重启并连接”'
+        : state.network.phase === 'disabled'
+          ? (navigator.language.toLowerCase().startsWith('zh') ? '内网已关闭，使用直接连接' : 'Private network off; using direct connection')
         : !state.network.hasAuthKey
           ? '尚未配置密钥'
           : state.network.phase === 'online'

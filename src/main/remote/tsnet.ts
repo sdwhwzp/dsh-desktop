@@ -49,13 +49,13 @@ async function writeConfigAtomically(path: string, value: Record<string, unknown
 }
 
 /**
- * Read network configuration; absent configuration uses the built-in Tizhi private network without creating files.
+ * Read network configuration; absent configuration keeps the private network disabled without creating files.
  * @param userData Electron user-data directory.
  * @returns Validated choices. Untouched legacy defaults are atomically migrated; malformed settings reject unchanged.
  */
 export async function readDesktopTsnetConfig(userData: string): Promise<DesktopTsnetConfig> {
   const defaults: DesktopTsnetConfig = {
-    enabled: true,
+    enabled: false,
     hostname: `tizhi-${hostname().toLowerCase().replace(/[^a-z0-9-]/gu, '-').slice(0, 56)}`.replace(/-+$/u, ''),
     controlURL: TIZHI_CONTROL_URL, routes: TIZHI_ROUTES,
   }
@@ -97,10 +97,10 @@ export async function readDesktopTsnetConfig(userData: string): Promise<DesktopT
   const usesLegacyDefaults = url.href === LEGACY_CONTROL_URL && routes.length === 0
     && authKey === undefined && authKeyEnvironment === undefined
   if (usesLegacyDefaults) {
-    await writeConfigAtomically(path, { ...value, enabled: true,
+    await writeConfigAtomically(path, { ...value, enabled,
       controlURL: defaults.controlURL, routes: defaults.routes })
   }
-  return { enabled: usesLegacyDefaults ? true : enabled, hostname: name,
+  return { enabled, hostname: name,
     controlURL: usesLegacyDefaults ? defaults.controlURL : url.href,
     routes: usesLegacyDefaults ? defaults.routes : routes,
     ...(authKey === undefined ? {} : { authKey }),
