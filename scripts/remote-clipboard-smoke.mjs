@@ -71,7 +71,7 @@ try {
     for (const item of items) {
       const values = {}
       for (const type of item.types) values[type] = await item.getType(type)
-      saved.push(values)
+      if (item.types.length) saved.push(values)
     }
     globalThis.__dshClipboardSmokeBackup = saved
   })
@@ -102,16 +102,13 @@ try {
   })
   await eventually(async () => assert.equal(await remoteEvaluate("document.querySelector('#editor').value"), 'Selected text'))
   checks.push('native Edit > Paste inserts text without granting JavaScript clipboard read')
-  const report = JSON.stringify({ success: true, platform: process.platform, checks }, null, 2)
-  if (process.argv[3]) await writeFile(resolve(process.argv[3]), report + '\n')
-  console.log(report)
 } finally {
   if (client) {
     try {
       if (clipboardSnapshot) await client.evaluate(async ({ clipboard, ClipboardItem }) => {
         const saved = globalThis.__dshClipboardSmokeBackup
         if (saved.length) await clipboard.write(saved.map(values => new ClipboardItem(values)))
-        else clipboard.clear()
+        else await clipboard.clear()
         delete globalThis.__dshClipboardSmokeBackup
       })
     } finally {
@@ -122,3 +119,7 @@ try {
   await new Promise(resolve => server.close(resolve))
   await rm(root, { recursive: true, force: true })
 }
+
+const report = JSON.stringify({ success: true, platform: process.platform, checks }, null, 2)
+if (process.argv[3]) await writeFile(resolve(process.argv[3]), report + '\n')
+console.log(report)
