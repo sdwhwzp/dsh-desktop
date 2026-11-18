@@ -1,5 +1,5 @@
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { spawn } from 'node:child_process'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -8,10 +8,11 @@ import { applyEntryPatches, entryListSchema } from '@deepseek-ai/cordis-plugin-i
 import {
   disableMigratedLegacyPreset,
   migrateLegacyAgentPresets
-} from '../src/main/state/legacy-preset-migration'
-import { extractDuplicateAgentPresetId } from '../src/main/runtime/harness-runtime'
-import { HarnessRuntime } from '../src/main/runtime/harness-runtime'
-import { resolveTestNodeExecutable } from './node-executable'
+} from '../src/main/profile/legacy-preset-migration'
+import { extractDuplicateAgentPresetId } from '../src/main/recovery/harness-log'
+import { DesktopHostProcess } from '../src/main/shell/backend/host-process'
+import { writeDesktopProductPatch } from '../src/main/shell/product-patch'
+import { ensureHostBundle, hostBundle } from './host/host-bundle-helper'
 
 const homes: string[] = []
 afterEach(async () => {
@@ -102,6 +103,7 @@ it('appends a legacy preset to a fresh Profile patch with comments and an empty 
 })
 
 it('publishes a migrated custom preset through the real Harness web registry', async () => {
+  await ensureHostBundle()
   const home = await mkdtemp(join(tmpdir(), 'dsh-legacy-preset-runtime-'))
   homes.push(home)
   const source = join(home, '.agent-presets', 'custom')
@@ -109,33 +111,28 @@ it('publishes a migrated custom preset through the real Harness web registry', a
   await writeFile(join(source, 'agent.cordis.yml'), '- id: persona\n  name: "@deepseek-ai/dsh-persona"\n  config:\n    prefix: Migrated runtime mode\n')
   await writeFile(join(source, 'preset.yml'), 'name: Migrated runtime mode\n')
   await migrateLegacyAgentPresets(home, () => {})
-  const overlay = join(home, 'desktop.patch.yml')
-  await writeFile(overlay, '[]\n')
+  const profile = join(home, 'profiles', 'web')
+  await writeFile(join(profile, 'package.json'), JSON.stringify({
+    name: 'dsh-profile-web', private: true, dependencies: {},
+    dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'] } }
+  }))
+  await writeFile(join(profile, 'cordis.yml'), '[]\n')
   const root = resolve(import.meta.dirname, '..')
-  let closed = Promise.resolve()
-  const runtime = new HarnessRuntime({
-    dshEntryPath: join(root, 'node_modules/@deepseek-ai/dsh/lib/bin.js'),
-    nodeEntryPath: join(root, 'build/harness-node-entry.mjs'),
-    nodeExecutablePath: resolveTestNodeExecutable(),
-    dshPatchPath: overlay,
-    dshSafePatchPath: overlay,
+  const host = new DesktopHostProcess({
+    node: createRequire(import.meta.url)('electron') as string,
+    entry: hostBundle,
+    runtimeDir: root,
+    projectDir: profile,
     dshHome: home,
-    logPath: join(home, 'runtime.log'),
-    preferredPort: 0,
-    startupTimeoutMs: 30_000,
-    launchProcess: (executable, args, options) => {
-      const child = spawn(executable, args, options)
-      closed = new Promise<void>(resolve => { child.once('close', () => resolve()) })
-      return child
-    },
-    onChanged() {}
+    profile: 'web',
+    environment: { DSH_DESKTOP_PATCH_FILE: await writeDesktopProductPatch(home) },
+    primaryRuntime: join(home, 'unused-runtime')
   })
   try {
-    await runtime.start(home, 'web')
-    expect(runtime.snapshot().phase, runtime.snapshot().logs.join('\n')).toBe('ready')
-    const { url, authToken } = runtime.snapshot()
-    if (!url || !authToken) throw new Error('Harness did not announce its endpoint')
-    const login = await fetch(`${url}/?token=${encodeURIComponent(authToken)}`, { redirect: 'manual' })
+    const ready = await host.start()
+    const url = new URL(ready.url).origin
+    const login = await fetch(ready.url, { redirect: 'manual' })
+    expect(login.status).toBe(303)
     const cookie = login.headers.getSetCookie().map((value) => value.split(';')[0]).join('; ')
     const roster = await fetch(new URL('/api/agentPresets/list', url), {
       method: 'POST',
@@ -154,10 +151,9 @@ it('publishes a migrated custom preset through the real Harness web registry', a
     expect(response.status).toBe(200)
     expect(await response.text()).toContain('const previewImport = async (file) =>')
   } finally {
-    await runtime.stop()
-    await closed
+    await host.stop()
   }
-}, 45_000)
+}, 120_000)
 
 describe('disableMigratedLegacyPreset', () => {
   const homes: string[] = []

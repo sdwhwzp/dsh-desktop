@@ -66,12 +66,12 @@ jobs:
         env:
           CSC_LINK: ${{ secrets.DESKTOP_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.DESKTOP_CSC_KEY_PASSWORD }}
-        run: node scripts/prepare-macos-signing-keychain.mjs
+        run: node scripts/release/prepare-macos-signing-keychain.mjs
       - name: Build signed and notarized macOS package
         env:
           CSC_KEYCHAIN: ${{ steps.signing_keychain.outputs.keychain }}
         run: |
-          node scripts/verify-target.mjs darwin x64 --remote
+          node scripts/verify/verify-target.mjs darwin x64 --remote
           DSH_DESKTOP_TARGET_PLATFORM=darwin \
             DSH_DESKTOP_TARGET_ARCH=arm64 \
             npm run prepare:tsnet
@@ -80,7 +80,7 @@ jobs:
           npx --no-install electron-builder \
             --mac --arm64 --publish never \
             --config electron-builder.remote.cjs \
-            --config.afterSign=scripts/notarize-macos.mjs
+            --config.afterSign=scripts/release/notarize-macos.mjs
       - name: Sign, notarize, and staple the DMG
         env:
           CSC_KEYCHAIN: ${{ steps.signing_keychain.outputs.keychain }}

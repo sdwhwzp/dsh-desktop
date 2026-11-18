@@ -14,9 +14,9 @@ on:
       - 'electron-builder.remote.cjs'
       - 'electron.vite.config.ts'
       - 'scripts/*remote*'
-      - 'scripts/electron-builder-windows.mjs'
-      - 'scripts/windows-directory-installer.mjs'
-      - 'scripts/verify-target.mjs'
+      - 'scripts/release/electron-builder-windows.mjs'
+      - 'scripts/release/windows-directory-installer.mjs'
+      - 'scripts/verify/verify-target.mjs'
       - 'test/remote-desktop.test.ts'
       - 'test/remote-permissions.test.ts'
       - 'test/remote-editing.test.ts'
@@ -30,7 +30,7 @@ on:
       - 'build/app-icon.png'
       - 'build/icon.icns'
       - 'build/icon.ico'
-      - 'scripts/generate-app-icons.mjs'
+      - 'scripts/release/generate-app-icons.mjs'
   workflow_dispatch:
 
 permissions:

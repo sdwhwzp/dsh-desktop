@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { assertWindowsExecutable, directoryInstallSection, directoryInstallerExits, directoryInstallUtil } from '../scripts/windows-directory-installer.mjs'
+import { assertWindowsExecutable, directoryInstallSection, directoryInstallerExits, directoryInstallUtil } from '../scripts/release/windows-directory-installer.mjs'
 
 const require = createRequire(import.meta.url)
 const template = join(dirname(require.resolve('app-builder-lib/package.json')), 'templates', 'nsis', 'installSection.nsh')
@@ -12,7 +12,7 @@ describe('pinned NSIS directory transaction', () => {
   it('uses the directory-aware builder for remote Windows packages', async () => {
     const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
     expect(packageJson.scripts['package:remote:win'])
-      .toContain('node scripts/electron-builder-windows.mjs')
+      .toContain('node scripts/release/electron-builder-windows.mjs')
   })
 
   it('accepts Windows PE headers and rejects host binaries', () => {
